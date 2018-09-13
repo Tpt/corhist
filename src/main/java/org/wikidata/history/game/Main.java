@@ -1,8 +1,6 @@
 package org.wikidata.history.game;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;
-import io.javalin.translator.json.JavalinJacksonPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,17 +30,15 @@ public class Main {
     Runtime.getRuntime().addShutdownHook(new Thread(violationDatabaseUpdater::close));
 
     Game game = new ConstraintCorrectionsGame(violationDatabase);
-    JavalinJacksonPlugin.configure(new ObjectMapper());
     Javalin.create()
-            .enableDynamicGzip()
             .enableCorsForOrigin("*")
             .get("/dgame", ctx -> {
               String action = ctx.queryParam("action");
               if ("desc".equals(action)) {
                 ctx.json(game.getDescription());
               } else if ("tiles".equals(action)) {
-                int num = Math.min(30, Integer.parseInt(ctx.queryParamOrDefault("num", "10")));
-                List<Game.Tile> tiles = game.generateTiles(num, ctx.queryParamOrDefault("lang", "en"));
+                int num = Math.min(30, Integer.parseInt(ctx.queryParam("num", "10")));
+                List<Game.Tile> tiles = game.generateTiles(num, ctx.queryParam("lang", "en"));
                 Map<String, Object> result = new HashMap<>();
                 result.put("tiles", tiles);
                 if (tiles.size() < num) {
