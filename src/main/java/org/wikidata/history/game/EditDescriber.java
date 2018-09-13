@@ -50,7 +50,7 @@ class EditDescriber {
 
   private String wbcreateclaimToString(Map<String, String> edit) {
     return "Add statement (" +
-            formatValue(Datamodel.makeWikidataItemIdValue(edit.get("entity")), null) + ", " +
+            formatValue(parseEntityId(edit.get("entity")), null) + ", " +
             formatValue(Datamodel.makeWikidataPropertyIdValue(edit.get("property")), null) + ", " +
             formatValue(edit.get("value"), edit.get("property")) + ")";
   }
@@ -73,7 +73,7 @@ class EditDescriber {
   }
 
   private Optional<Statement> getStatement(String guid) {
-    EntityIdValue subjectId = Datamodel.makeWikidataItemIdValue(guid.substring(0, guid.indexOf('$')).toUpperCase());
+    EntityIdValue subjectId = parseEntityId(guid.substring(0, guid.indexOf('$')).toUpperCase());
 
     Map<String, String> params = new TreeMap<>();
     params.put("action", "wbgetclaims");
@@ -148,6 +148,19 @@ class EditDescriber {
     } catch (IOException e) {
       LOGGER.error(e.getMessage(), e);
       return Optional.empty();
+    }
+  }
+
+  private EntityIdValue parseEntityId(String entityId) {
+    switch (entityId.charAt(0)) {
+      case 'L':
+        return Datamodel.makeWikidataLexemeIdValue(entityId);
+      case 'P':
+        return Datamodel.makeWikidataPropertyIdValue(entityId);
+      case 'Q':
+        return Datamodel.makeWikidataItemIdValue(entityId);
+      default:
+        throw new IllegalArgumentException("Not supported entity id" + entityId);
     }
   }
 }
