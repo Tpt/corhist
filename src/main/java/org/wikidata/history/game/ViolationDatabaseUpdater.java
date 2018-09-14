@@ -14,6 +14,7 @@ import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.Rio;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.wikidata.history.Constants;
 import org.wikidata.history.WikidataSPARQLEndpoint;
 import org.wikidata.history.sparql.Vocabulary;
 
@@ -56,6 +57,7 @@ final class ViolationDatabaseUpdater implements AutoCloseable {
         IRI entity = (IRI) bindingSet.getValue("entity");
         Request request = new Request.Builder()
                 .url("https://www.wikidata.org/wiki/Special:EntityData/" + entity.getLocalName() + ".ttl?flavor=dump")
+                .addHeader("User-Agent", Constants.USER_AGENT)
                 .build();
         CLIENT.newCall(request).enqueue(newEditDataCallback);
         try {
@@ -109,6 +111,7 @@ final class ViolationDatabaseUpdater implements AutoCloseable {
     private void onItemChange(String itemId) {
       Request request = new Request.Builder()
               .url("https://www.wikidata.org/wiki/Special:EntityData/" + itemId + ".ttl?flavor=dump")
+              .addHeader("User-Agent", Constants.USER_AGENT)
               .build();
       CLIENT.newCall(request).enqueue(newEditDataCallback);
     }
@@ -154,6 +157,7 @@ final class ViolationDatabaseUpdater implements AutoCloseable {
           Model data = Rio.parse(reader, url.toString(), RDFFormat.TURTLE);
           Request request = new Request.Builder()
                   .url("https://www.wikidata.org/w/api.php?action=wbcheckconstraints&format=json&id=" + entityId)
+                  .addHeader("User-Agent", Constants.USER_AGENT)
                   .build();
           CLIENT.newCall(request).enqueue(new WbCheckConstraintsCallback(violationDatabase, correctionLookup, data));
         }

@@ -1,6 +1,5 @@
 package org.wikidata.history;
 
-import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.sparql.SPARQLRepository;
 
 import java.util.Collections;
@@ -13,12 +12,8 @@ public class WikidataSPARQLEndpoint implements AutoCloseable {
 
   public WikidataSPARQLEndpoint() {
     repo = new SPARQLRepository(WDQS_ENDPOINT);
-    repo.setAdditionalHttpHeaders(Collections.singletonMap("User-Agent", "WikidataHistory 0.1; User:Tpt"));
+    repo.setAdditionalHttpHeaders(Collections.singletonMap("User-Agent", Constants.USER_AGENT));
     repo.initialize();
-  }
-
-  public RepositoryConnection newConnection() {
-    return repo.getConnection();
   }
 
   public IterableTupleQuery executeTupleQuery(String query) {

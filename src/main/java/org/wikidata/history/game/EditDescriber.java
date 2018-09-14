@@ -9,6 +9,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.wikidata.history.Constants;
 import org.wikidata.history.sparql.Vocabulary;
 import org.wikidata.wdtk.datamodel.helpers.Datamodel;
 import org.wikidata.wdtk.datamodel.helpers.DatamodelMapper;
@@ -135,7 +136,10 @@ class EditDescriber {
       for (Map.Entry<String, String> param : params.entrySet()) {
         urlBuilder.addQueryParameter(param.getKey(), param.getValue());
       }
-      Request request = new Request.Builder().url(urlBuilder.build()).build();
+      Request request = new Request.Builder()
+              .url(urlBuilder.build())
+              .addHeader("User-Agent", Constants.USER_AGENT)
+              .build();
       try (Response response = CLIENT.newCall(request).execute()) {
         if (response.body() == null) {
           LOGGER.error("No response : " + response);
