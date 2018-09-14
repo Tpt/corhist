@@ -13,7 +13,6 @@ import org.wikidata.history.sparql.Vocabulary;
 import org.wikidata.wdtk.datamodel.helpers.Datamodel;
 import org.wikidata.wdtk.datamodel.helpers.DatamodelMapper;
 import org.wikidata.wdtk.datamodel.implementation.StatementImpl;
-import org.wikidata.wdtk.datamodel.implementation.ValueImpl;
 import org.wikidata.wdtk.datamodel.interfaces.*;
 
 import java.io.IOException;
@@ -24,6 +23,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 class EditDescriber {
 
@@ -50,14 +50,14 @@ class EditDescriber {
 
   private String wbcreateclaimToString(Map<String, String> edit) {
     return "Add statement (" +
-            formatValue(parseEntityId(edit.get("entity")), null) + ", " +
+            formatValue(SimpleValueSerializer.parseEntityId(edit.get("entity")), null) + ", " +
             formatValue(Datamodel.makeWikidataPropertyIdValue(edit.get("property")), null) + ", " +
             formatValue(edit.get("value"), edit.get("property")) + ")";
   }
 
   private String wbremoveclaimsToString(Map<String, String> edit) {
     return Arrays.stream(edit.get("claim").split("\\|"))
-            .map(guid -> "Remove statement <a href='" + Vocabulary.WDS_NAMESPACE + guid + "'>" + guid + "</a> :" +
+            .map(guid -> "Remove statement <a href='" + Vocabulary.WDS_NAMESPACE + guid + "'>" + guid + "</a> : " +
                     getStatement(guid).map(this::formatStatement).orElse("statement not found")
             )
             .collect(Collectors.joining("\n"));
@@ -73,7 +73,7 @@ class EditDescriber {
   }
 
   private Optional<Statement> getStatement(String guid) {
-    EntityIdValue subjectId = parseEntityId(guid.substring(0, guid.indexOf('$')).toUpperCase());
+    EntityIdValue subjectId = SimpleValueSerializer.parseEntityId(guid.substring(0, guid.indexOf('$')).toUpperCase());
 
     Map<String, String> params = new TreeMap<>();
     params.put("action", "wbgetclaims");
@@ -97,7 +97,7 @@ class EditDescriber {
     Snak mainSnak = statement.getClaim().getMainSnak();
     return "(" +
             formatValue(claim.getSubject(), null) + ", " +
-            formatValue(mainSnak.getPropertyId(), null) +
+            formatValue(mainSnak.getPropertyId(), null) + ", " +
             (mainSnak instanceof ValueSnak ? formatValue(((ValueSnak) mainSnak).getValue(), mainSnak.getPropertyId().getId()) : "?") +
             ")";
 
@@ -121,8 +121,8 @@ class EditDescriber {
 
   private String formatValue(String value, String propertyId) {
     try {
-      return formatValue(OBJECT_MAPPER.readValue(value, ValueImpl.class), propertyId);
-    } catch (IOException e) {
+      return formatValue(SimpleValueSerializer.deserialize(value), propertyId);
+    } catch (IllegalArgumentException e) {
       LOGGER.error(e.getMessage(), e);
       return value;
     }
@@ -151,16 +151,64 @@ class EditDescriber {
     }
   }
 
-  private EntityIdValue parseEntityId(String entityId) {
-    switch (entityId.charAt(0)) {
-      case 'L':
-        return Datamodel.makeWikidataLexemeIdValue(entityId);
-      case 'P':
-        return Datamodel.makeWikidataPropertyIdValue(entityId);
-      case 'Q':
-        return Datamodel.makeWikidataItemIdValue(entityId);
+  Stream<String> entities(Map<String, String> edit) {
+    return extractEntities(edit).map(EntityIdValue::getId).distinct();
+  }
+
+  private Stream<EntityIdValue> extractEntities(Map<String, String> edit) {
+    switch (edit.get("action")) {
+      case "wbcreateclaim":
+        return wbcreateclaimEntities(edit);
+      case "wbremoveclaims":
+        return wbremoveclaimsEntities(edit);
+      case "wbsetclaimvalue":
+        return wbsetclaimvalueEntities(edit);
       default:
-        throw new IllegalArgumentException("Not supported entity id" + entityId);
+        return Stream.empty();
+    }
+  }
+
+  private Stream<EntityIdValue> wbcreateclaimEntities(Map<String, String> edit) {
+    return Stream.concat(
+            Stream.of(SimpleValueSerializer.parseEntityId(edit.get("entity"))),
+            valueEntities(edit.get("value"))
+
+    );
+  }
+
+  private Stream<EntityIdValue> wbremoveclaimsEntities(Map<String, String> edit) {
+    return Arrays.stream(edit.get("claim").split("\\|"))
+            .flatMap(guid -> getStatement(guid).map(Stream::of).orElseGet(Stream::empty))
+            .flatMap(this::statementEntities);
+  }
+
+  private Stream<EntityIdValue> wbsetclaimvalueEntities(Map<String, String> edit) {
+    return Stream.concat(
+            getStatement(edit.get("claim")).map(Stream::of).orElseGet(Stream::empty).flatMap(this::statementEntities),
+            valueEntities(edit.get("value"))
+    );
+  }
+
+  private Stream<EntityIdValue> statementEntities(Statement statement) {
+    return Stream.concat(
+            Stream.of(statement.getSubject()),
+            Optional.of(statement.getValue())
+                    .flatMap(value -> value instanceof EntityIdValue ? Optional.of((EntityIdValue) value) : Optional.empty())
+                    .map(Stream::of).orElseGet(Stream::empty)
+    );
+  }
+
+  private Stream<EntityIdValue> valueEntities(String valueString) {
+    try {
+      Value value = SimpleValueSerializer.deserialize(valueString);
+      if (value instanceof EntityIdValue) {
+        return Stream.of((EntityIdValue) value);
+      } else {
+        return Stream.empty();
+      }
+    } catch (IllegalArgumentException e) {
+      LOGGER.error(e.getMessage(), e);
+      return Stream.empty();
     }
   }
 }

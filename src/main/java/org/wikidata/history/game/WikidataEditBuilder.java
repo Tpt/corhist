@@ -63,7 +63,7 @@ class WikidataEditBuilder {
   }
 
   private Optional<Map<String, String>> oneAdditionCase(String entityId, String propertyId, Value value) {
-    return convertDataValue(value).map(valueO -> {
+    return convertDataValue(value).flatMap(WikidataEditBuilder::valueToSerialize).map(valueO -> {
       try {
         Map<String, String> edit = new TreeMap<>();
         edit.put("action", "wbcreateclaim");
@@ -116,7 +116,7 @@ class WikidataEditBuilder {
   }
 
   private Optional<Map<String, String>> oneReplacementCase(String entityId, String propertyId, Value fromValue, Value toValue) {
-    return getGuids(entityId, propertyId, fromValue).flatMap(guid -> convertDataValue(toValue).map(value -> {
+    return getGuids(entityId, propertyId, fromValue).flatMap(guid -> convertDataValue(toValue).flatMap(WikidataEditBuilder::valueToSerialize).map(value -> {
       try {
         Map<String, String> edit = new TreeMap<>();
         edit.put("action", "wbsetclaimvalue");
@@ -190,6 +190,14 @@ class WikidataEditBuilder {
         return Optional.empty();
       }
     } else {
+      return Optional.empty();
+    }
+  }
+
+  private static Optional<Object> valueToSerialize(org.wikidata.wdtk.datamodel.interfaces.Value value) {
+    try {
+      return Optional.of(SimpleValueSerializer.serialize(value));
+    } catch (IllegalArgumentException e) {
       return Optional.empty();
     }
   }

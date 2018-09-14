@@ -29,7 +29,7 @@ final class ConstraintCorrectionsGame implements Game {
   public Description getDescription() {
     Description description = new Description();
     description.setLabel("en", "Automated constraint violations corrections");
-    description.setDescription("en", "Corrections for constraints violations automatically mined from the violations already fixed in the Wikidata history.");
+    description.setDescription("en", "Possible corrections for constraints violations. They are learned from the violations already fixed in the Wikidata edit history. This game have been created by User:Tpt.");
     return description;
   }
 
@@ -60,10 +60,13 @@ final class ConstraintCorrectionsGame implements Game {
     tile.addSection(new ItemSection(correction.getEntityId()));
     tile.addSection(new TextSection("Violation", correction.getMessage()));
     tile.addSection(new TextSection("Possible correction", editDescriber.toString(correction.getEdit())));
+    editDescriber.entities(correction.getEdit())
+            .filter(entityId -> !entityId.equals(correction.getEntityId()))
+            .forEach(entityId -> tile.addSection(new ItemSection(entityId)));
 
-    tile.addControl(new Button("green", "yes", "Yes", correction.getEdit()));
-    tile.addControl(new Button("white", "skip", "Skip"));
-    tile.addControl(new Button("blue", "no", "No"));
+    tile.addButton(new Button("green", "yes", "Yes", correction.getEdit()));
+    tile.addButton(new Button("white", "skip", "Skip"));
+    tile.addButton(new Button("blue", "no", "No"));
 
     return tile;
   }

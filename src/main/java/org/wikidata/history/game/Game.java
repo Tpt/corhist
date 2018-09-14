@@ -3,10 +3,7 @@ package org.wikidata.history.game;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public interface Game {
 
@@ -47,7 +44,7 @@ public interface Game {
   final class Tile {
     private final int id;
     private final List<Section> sections = new ArrayList<>();
-    private final List<Button> controls = new ArrayList<>();
+    private final List<Button> buttons = new ArrayList<>();
 
     Tile(int id) {
       this.id = id;
@@ -68,16 +65,18 @@ public interface Game {
     }
 
     @JsonProperty("controls")
-    List<Button> getControls() {
-      return controls;
+    List<ButtonsControl> getControls() {
+      return Collections.singletonList(new ButtonsControl(buttons));
     }
 
-    void addControl(Button control) {
-      controls.add(control);
+    void addButton(Button button) {
+      buttons.add(button);
     }
   }
 
   interface Section {
+    @JsonProperty("type")
+    String getType();
   }
 
   final class ItemSection implements Section {
@@ -85,6 +84,12 @@ public interface Game {
 
     ItemSection(String id) {
       this.id = id;
+    }
+
+    @JsonProperty("type")
+    @Override
+    public String getType() {
+      return "item";
     }
 
     @JsonProperty("q")
@@ -102,6 +107,12 @@ public interface Game {
       this.text = text;
     }
 
+    @JsonProperty("type")
+    @Override
+    public String getType() {
+      return "text";
+    }
+
     @JsonProperty("title")
     String getTitle() {
       return title;
@@ -110,6 +121,24 @@ public interface Game {
     @JsonProperty("text")
     String getText() {
       return text;
+    }
+  }
+
+  final class ButtonsControl {
+    private List<Button> entries;
+
+    ButtonsControl(List<Button> entries) {
+      this.entries = entries;
+    }
+
+    @JsonProperty("type")
+    public String getType() {
+      return "buttons";
+    }
+
+    @JsonProperty("entries")
+    List<Button> getEntries() {
+      return entries;
     }
   }
 
