@@ -22,16 +22,17 @@ public class Main {
     Runtime.getRuntime().addShutdownHook(new Thread(violationDatabase::close));
 
     CorrectionLookup correctionLookup = new CorrectionLookup("*.ser");
-    ViolationDatabaseUpdater violationDatabaseUpdater = new ViolationDatabaseUpdater(violationDatabase, correctionLookup);
 
     new Thread(() -> {
       LOGGER.info("initializing database");
-      violationDatabaseUpdater.loadFromWikidataQuery();
+      try (ViolationDatabaseUpdater violationDatabaseUpdater = new ViolationDatabaseUpdater(violationDatabase, correctionLookup)) {
+        violationDatabaseUpdater.loadFromWikidataQuery();
+      }
       LOGGER.info("database initialization done");
     }).start();
 
-    violationDatabaseUpdater.startToLoadFromRecentChanges();
-    Runtime.getRuntime().addShutdownHook(new Thread(violationDatabaseUpdater::close));
+    //TODO: take care of request rate violationDatabaseUpdater.startToLoadFromRecentChanges();
+    //Runtime.getRuntime().addShutdownHook(new Thread(violationDatabaseUpdater::close));
 
     Game game = new ConstraintCorrectionsGame(violationDatabase);
     Javalin.create()
