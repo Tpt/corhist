@@ -37,8 +37,8 @@ public class TypeQueriesBuilder extends AbstractQueriesBuilder {
                     " } " +
                     " FILTER NOT EXISTS { GRAPH ?add { ?s <" + OWL.SAMEAS + "> ?red } } " +
                     "}",
-            "SELECT DISTINCT (?s AS ?targetS) (?o AS ?targetO) (true AS ?isCorrAddition) (?s AS ?corrS) ?corrP (?o2 AS ?corrO) ?corrRev WHERE { " +
-                    " {SELECT DISTINCT ?s WHERE { GRAPH ?g { ?s <" + targetProperty + "> ?o }}}" + //Hack to only work on interesting items
+            "SELECT DISTINCT (?s AS ?targetS) (?o AS ?targetO) (true AS ?isCorrAddition) (?s AS ?corrS) ?corrP (?type AS ?corrO) ?corrRev WHERE { " +
+                    " {SELECT DISTINCT ?s WHERE { ?s <" + targetProperty + "> ?o }}" + //Hack to only work on interesting items
                     " GRAPH ?add { ?s " + relationsToHave + " ?type } . " +
                     " ?corrRev <http://wikiba.se/history/ontology#additions> ?add ; " +
                     "          <http://wikiba.se/history/ontology#deletions> ?del ; " +
