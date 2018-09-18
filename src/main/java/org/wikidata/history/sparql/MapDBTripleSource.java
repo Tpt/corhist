@@ -198,19 +198,22 @@ final class MapDBTripleSource implements TripleSource, AutoCloseable {
       }
       try {
         NumericValueFactory.RevisionIRI[] revisionIris = getRevisionIris(contexts);
-        NumericTriple triple = new NumericTriple(
-                (subj == null) ? 0 : parseEntityIRI(subj),
-                (pred == null) ? 0 : valueFactory.encodePredicate(pred),
-                (obj == null) ? 0 : valueFactory.encodeValue(obj)
-        );
         if (subj == null) {
           if (pred == null) {
             throw new QueryEvaluationException("NumericTriple patterns with not subject and predicate are not supported");
           } else {
-            return new DirectStatementIteration(posStatementIndex.entryIterator(triple), revisionIris);
+            return new DirectStatementIteration(posStatementIndex.entryIterator(new NumericTriple(
+                    0,
+                    valueFactory.encodePredicate(pred),
+                    (obj == null) ? 0 : valueFactory.encodeValue(obj)
+            )), revisionIris);
           }
         } else {
-          CloseableIteration<Statement, QueryEvaluationException> result = new DirectStatementIteration(spoStatementIndex.entryIterator(triple), revisionIris);
+          CloseableIteration<Statement, QueryEvaluationException> result = new DirectStatementIteration(spoStatementIndex.entryIterator(new NumericTriple(
+                  parseEntityIRI(subj),
+                  (pred == null) ? 0 : valueFactory.encodePredicate(pred),
+                  (pred == null || obj == null) ? 0 : valueFactory.encodeValue(obj)
+          )), revisionIris);
           if (pred == null && obj != null) {
             return new FilterIteration<Statement, QueryEvaluationException>(result) {
               @Override
