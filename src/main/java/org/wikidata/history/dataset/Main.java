@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.stream.Collectors;
 
 public class Main {
   private static final Logger LOGGER = LoggerFactory.getLogger("dataset");
@@ -32,14 +31,7 @@ public class Main {
               .flatMap(constraintViolationCorrectionLookup::findCorrections)
               .forEach(correction -> {
                 try {
-                  writer.append(correction.getConstraint().getId().toString()).append('\t')
-                          .append(correction.getTargetTriple().getSubject().toString()).append('\t')
-                          .append(correction.getTargetTriple().getPredicate().toString()).append('\t')
-                          .append(correction.getTargetTriple().getObject().toString()).append("\t->\t")
-                          .append(correction.getCorrection().stream().map(statement ->
-                                  statement.getSubject().toString() + '\t' + statement.getPredicate() + '\t' + statement.getObject() + '\t' + statement.getContext()
-                          ).collect(Collectors.joining("\t"))).append('\t')
-                          .append(correction.getCorrectionRevision().toString()).append('\n');
+                  correction.write(writer);
                 } catch (IOException e) {
                   LOGGER.error(e.getMessage(), e);
                 }

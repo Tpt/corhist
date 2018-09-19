@@ -4,7 +4,9 @@ import org.apache.commons.cli.*;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.ImmutableTriple;
 import org.apache.commons.lang3.tuple.Pair;
+import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Statement;
+import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.query.algebra.StatementPattern;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.slf4j.Logger;
@@ -23,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -40,177 +43,206 @@ public class Main {
 
     Path index = Paths.get("wd-history-index");
     String filter = line.getOptionValue("constraints", "*");
-    try (
-            HistoryRepository repository = new HistoryRepository(index);
-            BufferedWriter statsWriter = Files.newBufferedWriter(Paths.get("constraint-stats-" + filter + ".tsv"))
-    ) {
-      statsWriter.append("constraint").append('\t')
-              .append("property").append('\t')
-              .append("property instances").append('\t')
-              .append("current violations").append('\t')
-              .append("corrections with one addition").append('\t')
-              .append("corrections with one deletion").append('\t')
-              .append("corrections with one replacement").append('\t')
-              .append("other corrections").append('\t')
-              .append("mined precision").append('\t')
-              .append("mined recall").append('\t')
-              .append("mined F-1").append('\t')
-              .append("test set size").append('\t')
-              .append("deletion baseline precision")
-              .append('\n');
-      ConstraintViolationCorrectionLookup constraintViolationCorrectionLookup = new ConstraintViolationCorrectionLookup(filter, repository);
-      List<ConstraintRule> allRules = new ArrayList<>();
-      DeletionBaseline deletionBaselineComputer = new DeletionBaseline(repository.getValueFactory());
-      new ConstraintsListBuilder().build().parallelStream()
-              .map(constraint -> ImmutablePair.of(constraint, buildTrainAndTestSet(constraintViolationCorrectionLookup, constraint)))
-              .filter(data -> !data.getRight().isEmpty())
-              .map(data -> {
-                Constraint constraint = data.getLeft();
-                TrainAndTestSets sets = data.getRight();
-                long currentInstancesCount = constraintViolationCorrectionLookup.countCurrentInstances(constraint);
-                long currentViolationsCount = constraintViolationCorrectionLookup.countCurrentViolations(constraint);
-                Map<Pair<Long, Long>, Long> correctedViolations = correctionsPerAdditionsDeletions(sets.stream());
-                long oneAddition = correctedViolations.getOrDefault(Pair.of(1L, 0L), 0L);
-                long oneDeletion = correctedViolations.getOrDefault(Pair.of(0L, 1L), 0L);
-                long oneReplacement = correctedViolations.getOrDefault(Pair.of(1L, 1L), 0L);
-                long otherCorrections = moreThanTwoChanges(correctedViolations);
-                Evaluation deletionBaseline = deletionBaselineComputer.compute(Stream.concat(sets.trainSet.stream(), sets.testSet.stream()));
 
-                //Mining and its evaluation
-                Evaluation evaluation = DEFAULT_EVALUATION;
-                if (!sets.trainSet.isEmpty() && !sets.testSet.isEmpty()) {
-                  try (RepositoryConnection connection = repository.getConnection()) {
-                    Miner miner = new Miner(connection);
-                    Evaluator evaluator = new Evaluator(connection);
-                    TuningMiner tuningMiner = new TuningMiner(miner, evaluator);
+    try (HistoryRepository repository = new HistoryRepository(index)) {
+      //Read constraints
+      Collection<Constraint> constraints = new ConstraintsListBuilder().build();
 
-                    List<ConstraintRule> rules = tuningMiner.mine(sets.trainSet);
-                    allRules.addAll(rules);
-                    evaluation = evaluator.evaluate(rules, sets.testSet);
+      //Read or write corrections
+      Path correctionsFile = Paths.get("constraint-corrections-" + filter + ".tsv");
+      Stream<Map.Entry<Constraint, TrainAndTestSets>> corrections = Files.exists(correctionsFile)
+              ? readCorrectionsFile(correctionsFile, repository.getValueFactory(), constraints)
+              : findAndSaveCorrections(correctionsFile, new ConstraintViolationCorrectionLookup(filter, repository), constraints);
+
+      try (BufferedWriter statsWriter = Files.newBufferedWriter(Paths.get("constraint-stats-" + filter + ".tsv"))) {
+        statsWriter.append("constraint").append('\t')
+                .append("property").append('\t')
+                .append("property instances").append('\t')
+                .append("current violations").append('\t')
+                .append("corrections with one addition").append('\t')
+                .append("corrections with one deletion").append('\t')
+                .append("corrections with one replacement").append('\t')
+                .append("other corrections").append('\t')
+                .append("mined precision").append('\t')
+                .append("mined recall").append('\t')
+                .append("mined F-1").append('\t')
+                .append("test set size").append('\t')
+                .append("deletion baseline precision")
+                .append('\n');
+        ConstraintViolationCorrectionLookup constraintViolationCorrectionLookup = new ConstraintViolationCorrectionLookup(filter, repository);
+        List<ConstraintRule> allRules = new ArrayList<>();
+        DeletionBaseline deletionBaselineComputer = new DeletionBaseline(repository.getValueFactory());
+        corrections.filter(data -> !data.getValue().isEmpty())
+                .map(data -> {
+                  Constraint constraint = data.getKey();
+                  TrainAndTestSets sets = data.getValue();
+                  long currentInstancesCount = constraintViolationCorrectionLookup.countCurrentInstances(constraint);
+                  long currentViolationsCount = constraintViolationCorrectionLookup.countCurrentViolations(constraint);
+                  Map<Pair<Long, Long>, Long> correctedViolations = correctionsPerAdditionsDeletions(sets.stream());
+                  long oneAddition = correctedViolations.getOrDefault(Pair.of(1L, 0L), 0L);
+                  long oneDeletion = correctedViolations.getOrDefault(Pair.of(0L, 1L), 0L);
+                  long oneReplacement = correctedViolations.getOrDefault(Pair.of(1L, 1L), 0L);
+                  long otherCorrections = moreThanTwoChanges(correctedViolations);
+                  Evaluation deletionBaseline = deletionBaselineComputer.compute(Stream.concat(sets.trainSet.stream(), sets.testSet.stream()));
+
+                  //Mining and its evaluation
+                  Evaluation evaluation = DEFAULT_EVALUATION;
+                  if (!sets.trainSet.isEmpty() && !sets.testSet.isEmpty()) {
+                    try (RepositoryConnection connection = repository.getConnection()) {
+                      Miner miner = new Miner(connection);
+                      Evaluator evaluator = new Evaluator(connection);
+                      TuningMiner tuningMiner = new TuningMiner(miner, evaluator);
+
+                      List<ConstraintRule> rules = tuningMiner.mine(sets.trainSet);
+                      allRules.addAll(rules);
+                      evaluation = evaluator.evaluate(rules, sets.testSet);
+                    }
                   }
-                }
 
-                synchronized (statsWriter) {
-                  try {
-                    statsWriter.append(constraint.getId().toString()).append('\t')
-                            .append(constraint.getProperty().toString()).append('\t')
-                            .append(Long.toString(currentInstancesCount)).append('\t')
-                            .append(Long.toString(currentViolationsCount)).append('\t')
-                            .append(Long.toString(oneAddition)).append('\t')
-                            .append(Long.toString(oneDeletion)).append('\t')
-                            .append(Long.toString(oneReplacement)).append('\t')
-                            .append(Long.toString(otherCorrections)).append('\t')
-                            .append(Float.toString(evaluation.getPrecision())).append('\t')
-                            .append(Float.toString(evaluation.getRecall())).append('\t')
-                            .append(Float.toString(evaluation.getF1())).append('\t')
-                            .append(Integer.toString(evaluation.getTestSetSize())).append('\t')
-                            .append(Float.toString(deletionBaseline.getPrecision())).append('\n');
-                  } catch (IOException e) {
-                    LOGGER.error(e.getMessage(), e);
+                  synchronized (statsWriter) {
+                    try {
+                      statsWriter.append(constraint.getId().toString()).append('\t')
+                              .append(constraint.getProperty().toString()).append('\t')
+                              .append(Long.toString(currentInstancesCount)).append('\t')
+                              .append(Long.toString(currentViolationsCount)).append('\t')
+                              .append(Long.toString(oneAddition)).append('\t')
+                              .append(Long.toString(oneDeletion)).append('\t')
+                              .append(Long.toString(oneReplacement)).append('\t')
+                              .append(Long.toString(otherCorrections)).append('\t')
+                              .append(Float.toString(evaluation.getPrecision())).append('\t')
+                              .append(Float.toString(evaluation.getRecall())).append('\t')
+                              .append(Float.toString(evaluation.getF1())).append('\t')
+                              .append(Integer.toString(evaluation.getTestSetSize())).append('\t')
+                              .append(Float.toString(deletionBaseline.getPrecision())).append('\n');
+                    } catch (IOException e) {
+                      LOGGER.error(e.getMessage(), e);
+                    }
                   }
-                }
 
-                return ImmutablePair.of(
-                        ImmutablePair.of(
-                                ImmutableTriple.of(1, currentInstancesCount, currentViolationsCount),
-                                correctedViolations
-                        ),
-                        ImmutableTriple.of(evaluation, evaluation, deletionBaseline)
-                );
-              })
-              .reduce((e1, e2) -> {
-                Evaluation evalWeighted1 = e1.getRight().getLeft();
-                Evaluation evalEqual1 = e1.getRight().getMiddle();
-                Evaluation evalBaseline1 = e1.getRight().getRight();
-                Evaluation evalWeighted2 = e2.getRight().getLeft();
-                Evaluation evalEqual2 = e2.getRight().getMiddle();
-                Evaluation evalBaseline2 = e2.getRight().getRight();
-                return ImmutablePair.of(
-                        ImmutablePair.of(
-                                ImmutableTriple.of(
-                                        e1.getLeft().getLeft().getLeft() + e2.getLeft().getLeft().getLeft(),
-                                        e1.getLeft().getLeft().getMiddle() + e2.getLeft().getLeft().getMiddle(),
-                                        e1.getLeft().getLeft().getRight() + e2.getLeft().getLeft().getRight()
-                                ),
-                                add(e1.getLeft().getRight(), e2.getLeft().getRight())
-                        ),
-                        ImmutableTriple.of(
-                                new Evaluation(
-                                weightedAverage(evalWeighted1.getPrecision(), evalWeighted1.getTestSetSize(), evalWeighted2.getPrecision(), evalWeighted2.getTestSetSize()),
-                                weightedAverage(evalWeighted1.getRecall(), evalWeighted1.getTestSetSize(), evalWeighted2.getRecall(), evalWeighted2.getTestSetSize()),
-                                evalWeighted1.getTestSetSize() + evalWeighted2.getTestSetSize()
-                        ),
-                        new Evaluation(
-                                weightedAverage(evalEqual1.getPrecision(), 1, evalEqual2.getPrecision(), 1),
-                                weightedAverage(evalEqual1.getRecall(), 1, evalEqual2.getRecall(), 1),
-                                evalEqual1.getTestSetSize() + evalEqual2.getTestSetSize()
-                        ),
-                                new Evaluation(
-                                        weightedAverage(evalBaseline1.getPrecision(), 1, evalBaseline2.getPrecision(), 1),
-                                        weightedAverage(evalBaseline2.getRecall(), 1, evalBaseline2.getRecall(), 1),
-                                        evalBaseline2.getTestSetSize() + evalBaseline2.getTestSetSize()
-                                )
-                        )
-                );
-              }).ifPresent(stats -> {
-        long constraintsCount = stats.getLeft().getLeft().getLeft();
-        long currentInstancesCount = stats.getLeft().getLeft().getMiddle();
-        long currentViolationsCount = stats.getLeft().getLeft().getRight();
-        Map<Pair<Long, Long>, Long> correctedViolations = stats.getLeft().getRight();
-        Evaluation evalWeighted = stats.getRight().getLeft();
-        Evaluation evalEqual = stats.getRight().getMiddle();
-        Evaluation evalBaseline = stats.getRight().getRight();
-        System.out.println(
-                "Aggregated stats: " +
-                        constraintsCount + " constraints, " +
-                        currentInstancesCount + " current instances, " +
-                        currentViolationsCount + " current violations, " +
-                        correctedViolations.getOrDefault(Pair.of(1L, 0L), 0L) + " solved violations with one addition, " +
-                        correctedViolations.getOrDefault(Pair.of(0L, 1L), 0L) + " solved violations with one deletion, " +
-                        correctedViolations.getOrDefault(Pair.of(1L, 1L), 0L) + " solved violations with one replacement, " +
-                        moreThanTwoChanges(correctedViolations) + " solved violations with an other diff, " +
-                        evalWeighted.getPrecision() + " weighted precision, " +
-                        evalWeighted.getRecall() + " weighted recall, " +
-                        evalWeighted.getF1() + " weighted F-1, " +
-                        evalEqual.getPrecision() + " raw precision, " +
-                        evalEqual.getRecall() + " raw recall, " +
-                        evalEqual.getF1() + " raw F-1," +
-                        evalBaseline.getPrecision() + " deletion baseline precision, " +
-                        evalBaseline.getRecall() + " deletion baseline recall, " +
-                        evalBaseline.getF1() + " deletion baseline F-1."
-        );
-      });
-
-      try (
-              ObjectOutputStream serializedOutputStream = new ObjectOutputStream(Files.newOutputStream(Paths.get("constraint-rules-" + filter + ".ser")));
-              BufferedWriter textWriter = Files.newBufferedWriter(Paths.get("constraint-rules-" + filter + ".txt"))
-      ) {
-        allRules.sort(Comparator.reverseOrder());
-        for (ConstraintRule rule : allRules) {
-          serializedOutputStream.writeObject(rule.toSimple());
-          textWriter.write(
-                  rule.getHead().stream().map(Main::toString).collect(Collectors.joining("\t")) + "\t<-\t" +
-                          toString(rule.getViolationBody()) + "\t" +
-                          rule.getContextBody().stream().map(Main::toString).collect(Collectors.joining("\t")) + "\t" +
-                          rule.getStdConfidence() + "\t" +
-                          rule.getSupport() + "\n"
+                  return ImmutablePair.of(
+                          ImmutablePair.of(
+                                  ImmutableTriple.of(1, currentInstancesCount, currentViolationsCount),
+                                  correctedViolations
+                          ),
+                          ImmutableTriple.of(evaluation, evaluation, deletionBaseline)
+                  );
+                })
+                .reduce((e1, e2) -> {
+                  Evaluation evalWeighted1 = e1.getRight().getLeft();
+                  Evaluation evalEqual1 = e1.getRight().getMiddle();
+                  Evaluation evalBaseline1 = e1.getRight().getRight();
+                  Evaluation evalWeighted2 = e2.getRight().getLeft();
+                  Evaluation evalEqual2 = e2.getRight().getMiddle();
+                  Evaluation evalBaseline2 = e2.getRight().getRight();
+                  return ImmutablePair.of(
+                          ImmutablePair.of(
+                                  ImmutableTriple.of(
+                                          e1.getLeft().getLeft().getLeft() + e2.getLeft().getLeft().getLeft(),
+                                          e1.getLeft().getLeft().getMiddle() + e2.getLeft().getLeft().getMiddle(),
+                                          e1.getLeft().getLeft().getRight() + e2.getLeft().getLeft().getRight()
+                                  ),
+                                  add(e1.getLeft().getRight(), e2.getLeft().getRight())
+                          ),
+                          ImmutableTriple.of(
+                                  new Evaluation(
+                                          weightedAverage(evalWeighted1.getPrecision(), evalWeighted1.getTestSetSize(), evalWeighted2.getPrecision(), evalWeighted2.getTestSetSize()),
+                                          weightedAverage(evalWeighted1.getRecall(), evalWeighted1.getTestSetSize(), evalWeighted2.getRecall(), evalWeighted2.getTestSetSize()),
+                                          evalWeighted1.getTestSetSize() + evalWeighted2.getTestSetSize()
+                                  ),
+                                  new Evaluation(
+                                          weightedAverage(evalEqual1.getPrecision(), 1, evalEqual2.getPrecision(), 1),
+                                          weightedAverage(evalEqual1.getRecall(), 1, evalEqual2.getRecall(), 1),
+                                          evalEqual1.getTestSetSize() + evalEqual2.getTestSetSize()
+                                  ),
+                                  new Evaluation(
+                                          weightedAverage(evalBaseline1.getPrecision(), 1, evalBaseline2.getPrecision(), 1),
+                                          weightedAverage(evalBaseline2.getRecall(), 1, evalBaseline2.getRecall(), 1),
+                                          evalBaseline2.getTestSetSize() + evalBaseline2.getTestSetSize()
+                                  )
+                          )
+                  );
+                }).ifPresent(stats -> {
+          long constraintsCount = stats.getLeft().getLeft().getLeft();
+          long currentInstancesCount = stats.getLeft().getLeft().getMiddle();
+          long currentViolationsCount = stats.getLeft().getLeft().getRight();
+          Map<Pair<Long, Long>, Long> correctedViolations = stats.getLeft().getRight();
+          Evaluation evalWeighted = stats.getRight().getLeft();
+          Evaluation evalEqual = stats.getRight().getMiddle();
+          Evaluation evalBaseline = stats.getRight().getRight();
+          System.out.println(
+                  "Aggregated stats: " +
+                          constraintsCount + " constraints, " +
+                          currentInstancesCount + " current instances, " +
+                          currentViolationsCount + " current violations, " +
+                          correctedViolations.getOrDefault(Pair.of(1L, 0L), 0L) + " solved violations with one addition, " +
+                          correctedViolations.getOrDefault(Pair.of(0L, 1L), 0L) + " solved violations with one deletion, " +
+                          correctedViolations.getOrDefault(Pair.of(1L, 1L), 0L) + " solved violations with one replacement, " +
+                          moreThanTwoChanges(correctedViolations) + " solved violations with an other diff, " +
+                          evalWeighted.getPrecision() + " weighted precision, " +
+                          evalWeighted.getRecall() + " weighted recall, " +
+                          evalWeighted.getF1() + " weighted F-1, " +
+                          evalEqual.getPrecision() + " raw precision, " +
+                          evalEqual.getRecall() + " raw recall, " +
+                          evalEqual.getF1() + " raw F-1," +
+                          evalBaseline.getPrecision() + " deletion baseline precision, " +
+                          evalBaseline.getRecall() + " deletion baseline recall, " +
+                          evalBaseline.getF1() + " deletion baseline F-1."
           );
+        });
+
+        try (
+                ObjectOutputStream serializedOutputStream = new ObjectOutputStream(Files.newOutputStream(Paths.get("constraint-rules-" + filter + ".ser")));
+                BufferedWriter textWriter = Files.newBufferedWriter(Paths.get("constraint-rules-" + filter + ".txt"))
+        ) {
+          allRules.sort(Comparator.reverseOrder());
+          for (ConstraintRule rule : allRules) {
+            serializedOutputStream.writeObject(rule.toSimple());
+            textWriter.write(
+                    rule.getHead().stream().map(Main::toString).collect(Collectors.joining("\t")) + "\t<-\t" +
+                            toString(rule.getViolationBody()) + "\t" +
+                            rule.getContextBody().stream().map(Main::toString).collect(Collectors.joining("\t")) + "\t" +
+                            rule.getStdConfidence() + "\t" +
+                            rule.getSupport() + "\n"
+            );
+          }
         }
       }
     }
   }
 
-  private static TrainAndTestSets buildTrainAndTestSet(ConstraintViolationCorrectionLookup lookup, Constraint constraint) {
-    List<ConstraintViolationCorrection> trainSet = new ArrayList<>();
-    List<ConstraintViolationCorrection> testSet = new ArrayList<>();
-    lookup.findCorrections(constraint).forEach(correction -> {
-      if (Math.random() >= TRAIN_SET_RATIO) {
-        testSet.add(correction);
-      } else {
-        trainSet.add(correction);
-      }
-    });
-    return new TrainAndTestSets(trainSet, testSet);
+  private static Stream<Map.Entry<Constraint, TrainAndTestSets>> readCorrectionsFile(Path file, ValueFactory valueFactory, Collection<Constraint> constraints) throws IOException {
+    System.out.println("Reading corrections dataset from " + file);
+    Map<IRI, Constraint> constraintsMap = constraints.stream().collect(Collectors.toMap(Constraint::getId, Function.identity()));
+    Map<Constraint, TrainAndTestSets> setsForConstraint = new HashMap<>();
+    try (Stream<String> lines = Files.lines(file)) {
+      lines.map(line -> ConstraintViolationCorrection.read(line, valueFactory, constraintsMap)).forEach(correction ->
+              setsForConstraint.computeIfAbsent(correction.getConstraint(), (k) -> new TrainAndTestSets()).add(correction)
+      );
+    }
+    return setsForConstraint.entrySet().stream();
+  }
+
+  private static Stream<Map.Entry<Constraint, TrainAndTestSets>> findAndSaveCorrections(Path file, ConstraintViolationCorrectionLookup constraintViolationCorrectionLookup, Collection<Constraint> constraints) throws IOException {
+    System.out.println("Mining corrections dataset");
+    Map<Constraint, TrainAndTestSets> setsForConstraint = constraints.stream().map(constraint -> {
+      TrainAndTestSets sets = new TrainAndTestSets();
+      constraintViolationCorrectionLookup.findCorrections(constraint).forEach(sets::add);
+      return ImmutablePair.of(constraint, sets);
+    }).collect(Collectors.toMap(Pair::getLeft, Pair::getRight));
+
+
+    System.out.println("Saving corrections dataset to " + file);
+    try (BufferedWriter correctionsWriter = Files.newBufferedWriter(file)) {
+      setsForConstraint.values().stream().flatMap(TrainAndTestSets::stream).forEach(correction -> {
+        try {
+          correction.write(correctionsWriter);
+        } catch (IOException e) {
+          LOGGER.error(e.getMessage(), e);
+        }
+      });
+    }
+
+    return setsForConstraint.entrySet().stream();
   }
 
   private static float weightedAverage(float v1, int p1, float v2, int p2) {
@@ -293,12 +325,15 @@ public class Main {
   }
 
   private static final class TrainAndTestSets {
-    private final List<ConstraintViolationCorrection> trainSet;
-    private final List<ConstraintViolationCorrection> testSet;
+    private final List<ConstraintViolationCorrection> trainSet = new ArrayList<>();
+    private final List<ConstraintViolationCorrection> testSet = new ArrayList<>();
 
-    private TrainAndTestSets(List<ConstraintViolationCorrection> trainSet, List<ConstraintViolationCorrection> testSet) {
-      this.trainSet = trainSet;
-      this.testSet = testSet;
+    private void add(ConstraintViolationCorrection correction) {
+      if (Math.random() >= TRAIN_SET_RATIO) {
+        testSet.add(correction);
+      } else {
+        trainSet.add(correction);
+      }
     }
 
     private Stream<ConstraintViolationCorrection> stream() {
