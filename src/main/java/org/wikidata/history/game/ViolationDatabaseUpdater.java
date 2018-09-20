@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
 
 final class ViolationDatabaseUpdater implements AutoCloseable {
 
-  private static final String CONSTRAINT_TYPES = "wd:Q21502838 wd:Q21510859 wd:Q21510865 wd:Q21510855 wd:Q21510862"; //TODO: update
+  private static final String CONSTRAINT_TYPES = "wd:Q21502838 wd:Q21510859 wd:Q21510865 wd:Q21510855 wd:Q21510862 wd:Q19474404 wd:Q21502410"; //TODO: update
   private static final String QUERY = "SELECT DISTINCT ?entity WHERE {\n" +
           "  VALUES ?constraintType { " + CONSTRAINT_TYPES + " } \n" +
           "  ?statement wikibase:hasViolationForConstraint ?constraint .\n" +
