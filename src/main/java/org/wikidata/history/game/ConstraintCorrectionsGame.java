@@ -64,9 +64,9 @@ final class ConstraintCorrectionsGame implements Game {
             .filter(entityId -> !entityId.equals(correction.getEntityId()))
             .forEach(entityId -> tile.addSection(new ItemSection(entityId)));
 
-    tile.addButton(new Button("green", "yes", "Yes", correction.getEdit()));
+    tile.addButton(new Button("green", "yes", "Apply the possible correction", correction.getEdit()));
     tile.addButton(new Button("white", "skip", "Skip"));
-    tile.addButton(new Button("blue", "no", "No"));
+    tile.addButton(new Button("blue", "no", "The proposed correction is wrong"));
 
     return tile;
   }
