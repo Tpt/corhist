@@ -54,7 +54,7 @@ public class Main {
                 game.log(ctx.queryParam("user"), Integer.parseInt(ctx.queryParam("tile")), ctx.queryParam("decision"));
               }
             })
-            .get("/corhist/stats", ctx -> ctx.json(violationDatabase.countByState()))
+            .get("/corhist/stats", ctx -> ctx.json(violationDatabase.countByTypeAndState()))
             .start(Integer.parseInt(System.getenv().getOrDefault("PORT", "7000")));
   }
 

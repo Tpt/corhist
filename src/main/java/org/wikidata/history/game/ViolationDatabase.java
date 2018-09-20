@@ -136,12 +136,13 @@ final class ViolationDatabase implements AutoCloseable {
     }
   }
 
-  synchronized Map<State, Long> countByState() {
-    Map<State, Long> results = new HashMap<>();
+  synchronized Map<String, Map<State, Long>> countByTypeAndState() {
+    Map<String, Map<State, Long>> results = new HashMap<>();
     try {
-      ResultSet resultSet = connection.prepareStatement("SELECT state, COUNT(id) AS count FROM correction GROUP BY state").executeQuery();
+      ResultSet resultSet = connection.prepareStatement("SELECT state, constraintType, COUNT(id) AS count FROM correction GROUP BY state, constraintType").executeQuery();
       while (resultSet.next()) {
-        results.put(State.fromString(resultSet.getString("state")), resultSet.getLong("count"));
+        results.computeIfAbsent(resultSet.getString("constraintType"), (k) -> new HashMap<>())
+                .put(State.fromString(resultSet.getString("state")), resultSet.getLong("count"));
       }
     } catch (SQLException e) {
       LOGGER.error(e.getMessage(), e);
