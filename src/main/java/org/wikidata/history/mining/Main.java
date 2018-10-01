@@ -54,6 +54,7 @@ public class Main {
               ? readCorrectionsFile(correctionsFile, repository.getValueFactory(), constraints)
               : findAndSaveCorrections(correctionsFile, new ConstraintViolationCorrectionLookup(filter, repository), constraints);
 
+      System.out.println("Starting to learn corrections rules");
       try (BufferedWriter statsWriter = Files.newBufferedWriter(Paths.get("constraint-stats-" + filter + ".tsv"))) {
         statsWriter.append("constraint").append('\t')
                 .append("property").append('\t')
@@ -219,6 +220,8 @@ public class Main {
               setsForConstraint.computeIfAbsent(correction.getConstraint(), (k) -> new TrainAndTestSets()).add(correction)
       );
     }
+    System.out.println("Corrections dataset reading done");
+
     return setsForConstraint.entrySet().stream();
   }
 
@@ -241,6 +244,7 @@ public class Main {
         }
       });
     }
+    System.out.println("Corrections dataset saving done");
 
     return setsForConstraint.entrySet().stream();
   }
