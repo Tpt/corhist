@@ -2,6 +2,7 @@ package org.wikidata.history.game;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.Sets;
 import io.javalin.Context;
 import io.javalin.Javalin;
 import org.slf4j.Logger;
@@ -11,11 +12,14 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class Main {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private static final Set<String> BUILD_IN_ARGS = Sets.newHashSet("_", "action", "callback", "in_cache", "lang", "num", "random_number");
 
   public static void main(String[] args) throws SQLException {
     ViolationDatabase violationDatabase = new ViolationDatabase();
@@ -43,7 +47,11 @@ public class Main {
                 jsonp(ctx, game.getDescription());
               } else if ("tiles".equals(action)) {
                 int num = Math.min(30, Integer.parseInt(ctx.queryParam("num", "10")));
-                List<Game.Tile> tiles = game.generateTiles(num, ctx.queryParam("lang", "en"));
+                String lang = ctx.queryParam("lang", "en");
+                Map<String, String> options = ctx.queryParamMap().entrySet().stream()
+                        .filter(param -> !BUILD_IN_ARGS.contains(param.getKey()) && param.getValue().size() == 1)
+                        .collect(Collectors.toMap(Map.Entry::getKey, param -> param.getValue().get(0)));
+                List<Game.Tile> tiles = game.generateTiles(num, lang, options);
                 Map<String, Object> result = new HashMap<>();
                 result.put("tiles", tiles);
                 if (tiles.size() < num) {

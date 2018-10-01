@@ -9,18 +9,14 @@ public interface Game {
 
   Description getDescription();
 
-  List<Tile> generateTiles(int count, String language);
+  List<Tile> generateTiles(int count, String language, Map<String, String> options);
 
   void log(String user, int tile, String decision);
 
-
-  /**
-   * TODO: add option support to
-   * options: [{"name": "Entry Type", "key": "type", "values": { "any": "Any", "person": Person"}}]
-   **/
   final class Description {
     private final Map<String, String> labels = new HashMap<>();
     private final Map<String, String> descriptions = new HashMap<>();
+    private final List<Option> options = new ArrayList<>();
 
     @JsonProperty("label")
     Map<String, String> getLabels() {
@@ -39,6 +35,46 @@ public interface Game {
     void setDescription(String language, String text) {
       descriptions.put(language, text);
     }
+
+    @JsonProperty("options")
+    List<Option> getOptions() {
+      return options;
+    }
+
+    void addOption(Option option) {
+      options.add(option);
+    }
+  }
+
+  final class Option {
+    private final String name;
+    private final String key;
+    private final Map<String, String> values = new HashMap<>();
+
+    Option(String name, String key) {
+      this.name = name;
+      this.key = key;
+    }
+
+    void addValue(String value, String label) {
+      values.put(value, label);
+    }
+
+    @JsonProperty("name")
+    String getName() {
+      return name;
+    }
+
+    @JsonProperty("key")
+    String getKey() {
+      return key;
+    }
+
+    @JsonProperty("values")
+    Map<String, String> getValues() {
+      return values;
+    }
+
   }
 
   final class Tile {

@@ -22,6 +22,8 @@ final class ViolationDatabase implements AutoCloseable {
   private final PreparedStatement getViolationStatusStatement;
   private final PreparedStatement updateViolationStatusStatement;
   private final PreparedStatement findViolationsPreparedStatement;
+  private final PreparedStatement findConstraintTypesStatement;
+  private final PreparedStatement findViolationsForConstraintTypePreparedStatement;
   private final PreparedStatement logActionPreparedStatement;
 
   ViolationDatabase() throws SQLException {
@@ -32,6 +34,8 @@ final class ViolationDatabase implements AutoCloseable {
     getViolationStatusStatement = connection.prepareStatement("SELECT state FROM correction WHERE statementId = ? AND constraintId = ?");
     updateViolationStatusStatement = connection.prepareStatement("UPDATE correction SET state = ? WHERE statementId = ? AND constraintId = ?");
     findViolationsPreparedStatement = connection.prepareStatement("SELECT * FROM correction WHERE state = 'p' ORDER BY RAND() LIMIT ?");
+    findViolationsForConstraintTypePreparedStatement = connection.prepareStatement("SELECT * FROM correction WHERE state = 'p' AND constraintType = ? ORDER BY RAND() LIMIT ?");
+    findConstraintTypesStatement = connection.prepareStatement("SELECT DISTINCT constraintType FROM correction");
     logActionPreparedStatement = connection.prepareStatement("UPDATE correction SET state = ?, user = ? WHERE id = ?");
   }
 
@@ -47,7 +51,8 @@ final class ViolationDatabase implements AutoCloseable {
             "  edit           TEXT NOT NULL," +
             "  state          VARCHAR(1) NOT NULL," +
             "  user           VARCHAR(256)," +
-            "  UNIQUE (statementId, constraintId)" +
+            "  UNIQUE (statementId, constraintId)," +
+            "  INDEX type_index ON (constraintType, constraintId) " +
             ")");
   }
 
@@ -100,25 +105,54 @@ final class ViolationDatabase implements AutoCloseable {
     return Optional.empty();
   }
 
-  synchronized List<PossibleCorrection> getViolations(int limit) {
-    List<PossibleCorrection> results = new ArrayList<>(limit);
+  synchronized List<PossibleCorrection> getRandomViolations(int limit) {
     try {
       PreparedStatement preparedStatement = findViolationsPreparedStatement;
       preparedStatement.setInt(1, limit);
-      ResultSet resultSet = preparedStatement.executeQuery();
-      while (resultSet.next()) {
-        results.add(new PossibleCorrection(
-                resultSet.getInt("id"),
-                resultSet.getString("entityId"),
-                resultSet.getString("propertyId"),
-                resultSet.getString("statementId"),
-                resultSet.getString("constraintId"),
-                resultSet.getString("constraintType"),
-                resultSet.getString("message"),
-                OBJECT_MAPPER.readValue(resultSet.getAsciiStream("edit"), MAP_STR_STR)
-        ));
-      }
+      return readPossibleCorrectionsResultSet(preparedStatement.executeQuery());
     } catch (SQLException | IOException e) {
+      LOGGER.error(e.getMessage(), e);
+    }
+    return Collections.emptyList();
+  }
+
+  synchronized List<PossibleCorrection> getRandomViolationsForConstraintType(String constraintType, int limit) {
+    try {
+      PreparedStatement preparedStatement = findViolationsForConstraintTypePreparedStatement;
+      preparedStatement.setString(1, constraintType);
+      preparedStatement.setInt(2, limit);
+      return readPossibleCorrectionsResultSet(preparedStatement.executeQuery());
+    } catch (SQLException | IOException e) {
+      LOGGER.error(e.getMessage(), e);
+    }
+    return Collections.emptyList();
+  }
+
+  private List<PossibleCorrection> readPossibleCorrectionsResultSet(ResultSet resultSet) throws SQLException, IOException {
+    List<PossibleCorrection> results = new ArrayList<>();
+    while (resultSet.next()) {
+      results.add(new PossibleCorrection(
+              resultSet.getInt("id"),
+              resultSet.getString("entityId"),
+              resultSet.getString("propertyId"),
+              resultSet.getString("statementId"),
+              resultSet.getString("constraintId"),
+              resultSet.getString("constraintType"),
+              resultSet.getString("message"),
+              OBJECT_MAPPER.readValue(resultSet.getAsciiStream("edit"), MAP_STR_STR)
+      ));
+    }
+    return results;
+  }
+
+  synchronized List<String> getConstraintTypes() {
+    List<String> results = new ArrayList<>();
+    try {
+      ResultSet resultSet = findConstraintTypesStatement.executeQuery();
+      while (resultSet.next()) {
+        results.add(resultSet.getString("constraintType"));
+      }
+    } catch (SQLException e) {
       LOGGER.error(e.getMessage(), e);
     }
     return results;

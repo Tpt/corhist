@@ -104,11 +104,11 @@ class EditDescriber {
 
   }
 
-  private String formatValue(Value value, String propertyId) {
+  private String formatValue(Value value, String propertyId, String generate) {
     try {
       Map<String, String> params = new TreeMap<>();
       params.put("action", "wbformatvalue");
-      params.put("generate", "text/html");
+      params.put("generate", generate);
       params.put("datavalue", OBJECT_MAPPER.writeValueAsString(value));
       if (propertyId != null) {
         params.put("property", propertyId);
@@ -120,13 +120,25 @@ class EditDescriber {
     }
   }
 
-  private String formatValue(String value, String propertyId) {
+  private String formatValue(Value value, String propertyId) {
+    return formatValue(value, propertyId, "text/html");
+  }
+
+  String formatValueAsText(Value value) {
+    return formatValue(value, null, "text/plain");
+  }
+
+  private String formatValue(String value, String propertyId, String generate) {
     try {
-      return formatValue(SimpleValueSerializer.deserialize(value), propertyId);
+      return formatValue(SimpleValueSerializer.deserialize(value), propertyId, generate);
     } catch (IllegalArgumentException e) {
       LOGGER.error(e.getMessage(), e);
       return value;
     }
+  }
+
+  private String formatValue(String value, String propertyId) {
+    return formatValue(value, propertyId, "text/html");
   }
 
   private Optional<JsonNode> apiCall(Map<String, String> params) {

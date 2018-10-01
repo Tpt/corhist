@@ -2,9 +2,11 @@ package org.wikidata.history.game;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.wikidata.wdtk.datamodel.helpers.Datamodel;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -30,13 +32,23 @@ final class ConstraintCorrectionsGame implements Game {
     Description description = new Description();
     description.setLabel("en", "Automated constraint violations corrections");
     description.setDescription("en", "Possible corrections for constraints violations. They are learned from the violations already fixed in the Wikidata edit history. This game have been created by User:Tpt.");
+
+    Option constraintTypeOption = new Option("Constraint type", "constraintType");
+    constraintTypeOption.addValue("*", "all constraints");
+    for (String constraintType : violationDatabase.getConstraintTypes()) {
+      constraintTypeOption.addValue(constraintType, editDescriber.formatValueAsText(Datamodel.makeWikidataItemIdValue(constraintType)));
+    }
+    description.addOption(constraintTypeOption);
+
     return description;
   }
 
   @Override
-  public List<Tile> generateTiles(int count, String language) {
-    List<Callable<Tile>> tileBuilders = violationDatabase.getViolations(count)
-            .stream()
+  public List<Tile> generateTiles(int count, String language, Map<String, String> options) {
+    List<PossibleCorrection> corrections = "*".equals(options.getOrDefault("constraintType", "*"))
+            ? violationDatabase.getRandomViolations(count)
+            : violationDatabase.getRandomViolationsForConstraintType(options.get("constraintType"), count);
+    List<Callable<Tile>> tileBuilders = corrections.stream()
             .map(correction -> (Callable<Tile>) () -> buildTile(correction))
             .collect(Collectors.toList());
     try {
