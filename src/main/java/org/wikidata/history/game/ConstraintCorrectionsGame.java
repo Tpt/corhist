@@ -71,7 +71,7 @@ final class ConstraintCorrectionsGame implements Game {
     Tile tile = new Tile(correction.getId());
 
     tile.addSection(new ItemSection(correction.getEntityId()));
-    tile.addSection(new HtmlSection("Violation", correction.getMessage()));
+    tile.addSection(new HtmlSection("Violation", EditDescriber.makeWikidataLinksAbsolute(correction.getMessage())));
     try {
       tile.addSection(new HtmlSection("Possible correction", editDescriber.toString(correction.getEdit())));
     } catch (StatementNotFoundException e) {

@@ -111,11 +111,15 @@ class EditDescriber {
       if (propertyId != null) {
         params.put("property", propertyId);
       }
-      return apiCall(params).map(result -> result.get("result").textValue()).orElseGet(value::toString);
+      return apiCall(params).map(result -> makeWikidataLinksAbsolute(result.get("result").textValue())).orElseGet(value::toString);
     } catch (JsonProcessingException e) {
       LOGGER.error(e.getMessage(), e);
       return value.toString();
     }
+  }
+
+  static String makeWikidataLinksAbsolute(String html) {
+    return html.replace("href=\"/wiki/", "href=\"https://www.wikidata.org/wiki/");
   }
 
   private String formatValue(Value value, String propertyId) {
