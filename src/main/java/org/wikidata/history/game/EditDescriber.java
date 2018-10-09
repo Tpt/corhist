@@ -58,14 +58,14 @@ class EditDescriber {
 
   private String wbremoveclaimsToString(Map<String, String> edit) {
     return Arrays.stream(edit.get("claim").split("\\|"))
-            .map(guid -> "Remove statement <a href='" + Vocabulary.WDS_NAMESPACE + guid + "'>" + guid + "</a> : " +
+            .map(guid -> "Remove <a href='" + Vocabulary.WDS_NAMESPACE + guid + "'>statement</a> " +
                     getStatement(guid).map(this::formatStatement).orElse("statement not found")
             )
             .collect(Collectors.joining("\n"));
   }
 
   private String wbsetclaimvalueToString(Map<String, String> edit) {
-    return "Edit statement <a href='" + Vocabulary.WDS_NAMESPACE + edit.get("claim") + "'>" + edit.get("claim") + "</a>: " +
+    return "Edit <a href='" + Vocabulary.WDS_NAMESPACE + edit.get("claim") + "'>statement</a> " +
             getStatement(edit.get("claim")).map(statement ->
                     formatStatement(statement) + ". Setting value to: " + formatValue(edit.get("value"), statement.getClaim().getMainSnak().getPropertyId().getId())
             ).orElse(
