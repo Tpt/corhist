@@ -134,19 +134,19 @@ public interface Game {
     }
   }
 
-  final class TextSection implements Section {
+  final class HtmlSection implements Section {
     private String title;
-    private String text;
+    private String content;
 
-    TextSection(String title, String text) {
+    HtmlSection(String title, String content) {
       this.title = title;
-      this.text = text;
+      this.content = content;
     }
 
     @JsonProperty("type")
     @Override
     public String getType() {
-      return "text";
+      return "html";
     }
 
     @JsonProperty("title")
@@ -155,8 +155,8 @@ public interface Game {
     }
 
     @JsonProperty("text")
-    String getText() {
-      return text;
+    String getContent() {
+      return content;
     }
   }
 

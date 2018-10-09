@@ -70,8 +70,8 @@ final class ConstraintCorrectionsGame implements Game {
     Tile tile = new Tile(correction.getId());
 
     tile.addSection(new ItemSection(correction.getEntityId()));
-    tile.addSection(new TextSection("Violation", correction.getMessage()));
-    tile.addSection(new TextSection("Possible correction", editDescriber.toString(correction.getEdit())));
+    tile.addSection(new HtmlSection("Violation", correction.getMessage()));
+    tile.addSection(new HtmlSection("Possible correction", editDescriber.toString(correction.getEdit())));
     editDescriber.entities(correction.getEdit())
             .filter(entityId -> !entityId.equals(correction.getEntityId()))
             .forEach(entityId -> tile.addSection(new ItemSection(entityId)));
