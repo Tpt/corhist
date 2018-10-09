@@ -7,6 +7,7 @@ import org.wikidata.wdtk.datamodel.helpers.Datamodel;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -48,13 +49,13 @@ final class ConstraintCorrectionsGame implements Game {
     List<PossibleCorrection> corrections = "*".equals(options.getOrDefault("constraintType", "*"))
             ? violationDatabase.getRandomViolations(count)
             : violationDatabase.getRandomViolationsForConstraintType(options.get("constraintType"), count);
-    List<Callable<Tile>> tileBuilders = corrections.stream()
-            .map(correction -> (Callable<Tile>) () -> buildTile(correction))
+    List<Callable<Optional<Tile>>> tileBuilders = corrections.stream()
+            .map(correction -> (Callable<Optional<Tile>>) () -> buildTile(correction))
             .collect(Collectors.toList());
     try {
       return EXECUTOR.invokeAll(tileBuilders).stream().flatMap(tileFuture -> {
         try {
-          return Stream.of(tileFuture.get());
+          return tileFuture.get().map(Stream::of).orElseGet(Stream::empty);
         } catch (InterruptedException | ExecutionException e) {
           LOGGER.error(e.getMessage(), e);
           return Stream.empty();
@@ -66,12 +67,16 @@ final class ConstraintCorrectionsGame implements Game {
     }
   }
 
-  private Tile buildTile(PossibleCorrection correction) {
+  private Optional<Tile> buildTile(PossibleCorrection correction) {
     Tile tile = new Tile(correction.getId());
 
     tile.addSection(new ItemSection(correction.getEntityId()));
     tile.addSection(new HtmlSection("Violation", correction.getMessage()));
-    tile.addSection(new HtmlSection("Possible correction", editDescriber.toString(correction.getEdit())));
+    try {
+      tile.addSection(new HtmlSection("Possible correction", editDescriber.toString(correction.getEdit())));
+    } catch (StatementNotFoundException e) {
+      return Optional.empty();
+    }
     editDescriber.entities(correction.getEdit())
             .filter(entityId -> !entityId.equals(correction.getEntityId()))
             .forEach(entityId -> tile.addSection(new ItemSection(entityId)));
@@ -80,7 +85,7 @@ final class ConstraintCorrectionsGame implements Game {
     tile.addButton(new Button("white", "skip", "Skip"));
     tile.addButton(new Button("blue", "no", "The proposed correction is wrong"));
 
-    return tile;
+    return Optional.of(tile);
   }
 
   @Override

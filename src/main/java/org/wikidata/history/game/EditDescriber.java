@@ -59,7 +59,7 @@ class EditDescriber {
   private String wbremoveclaimsToString(Map<String, String> edit) {
     return Arrays.stream(edit.get("claim").split("\\|"))
             .map(guid -> "Remove <a href='" + Vocabulary.WDS_NAMESPACE + guid + "'>statement</a> " +
-                    getStatement(guid).map(this::formatStatement).orElse("statement not found")
+                    getStatement(guid).map(this::formatStatement).orElseThrow(StatementNotFoundException::new)
             )
             .collect(Collectors.joining("\n"));
   }
@@ -68,9 +68,7 @@ class EditDescriber {
     return "Edit <a href='" + Vocabulary.WDS_NAMESPACE + edit.get("claim") + "'>statement</a> " +
             getStatement(edit.get("claim")).map(statement ->
                     formatStatement(statement) + ". Setting value to: " + formatValue(edit.get("value"), statement.getClaim().getMainSnak().getPropertyId().getId())
-            ).orElse(
-                    "statement not found. Setting value to: " + formatValue(edit.get("value"), null)
-            );
+            ).orElseThrow(StatementNotFoundException::new);
   }
 
   private Optional<Statement> getStatement(String guid) {
