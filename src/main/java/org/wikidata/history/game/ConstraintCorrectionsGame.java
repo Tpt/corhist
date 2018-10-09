@@ -35,7 +35,7 @@ final class ConstraintCorrectionsGame implements Game {
     description.setDescription("en", "Possible corrections for constraints violations. They are learned from the violations already fixed in the Wikidata edit history. This game have been created by User:Tpt.");
 
     Option constraintTypeOption = new Option("Constraint type", "constraintType");
-    constraintTypeOption.addValue("*", "all constraints");
+    constraintTypeOption.addValue("all", "all constraints");
     for (String constraintType : violationDatabase.getConstraintTypes()) {
       constraintTypeOption.addValue(constraintType, editDescriber.formatValueAsText(Datamodel.makeWikidataItemIdValue(constraintType)));
     }
@@ -46,7 +46,8 @@ final class ConstraintCorrectionsGame implements Game {
 
   @Override
   public List<Tile> generateTiles(int count, String language, Map<String, String> options) {
-    List<PossibleCorrection> corrections = "*".equals(options.getOrDefault("constraintType", "*"))
+    String correctionsSelector = options.getOrDefault("constraintType", "all");
+    List<PossibleCorrection> corrections = "all".equals(correctionsSelector) || "*".equals(correctionsSelector)
             ? violationDatabase.getRandomViolations(2 * count)
             : violationDatabase.getRandomViolationsForConstraintType(options.get("constraintType"), 2 * count);
     List<Callable<Optional<Tile>>> tileBuilders = corrections.stream()

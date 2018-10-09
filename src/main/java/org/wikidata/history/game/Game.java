@@ -49,7 +49,7 @@ public interface Game {
   final class Option {
     private final String name;
     private final String key;
-    private final Map<String, String> values = new HashMap<>();
+    private final Map<String, String> values = new TreeMap<>();
 
     Option(String name, String key) {
       this.name = name;

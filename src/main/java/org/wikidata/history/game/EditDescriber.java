@@ -119,7 +119,7 @@ class EditDescriber {
   }
 
   static String makeWikidataLinksAbsolute(String html) {
-    return html.replace("href=\"/wiki/", "href=\"https://www.wikidata.org/wiki/");
+    return html.replace("href=\"/wiki/", "target=\"_blank\" href=\"https://www.wikidata.org/wiki/");
   }
 
   private String formatValue(Value value, String propertyId) {
