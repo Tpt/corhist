@@ -47,8 +47,8 @@ final class ConstraintCorrectionsGame implements Game {
   @Override
   public List<Tile> generateTiles(int count, String language, Map<String, String> options) {
     List<PossibleCorrection> corrections = "*".equals(options.getOrDefault("constraintType", "*"))
-            ? violationDatabase.getRandomViolations(count)
-            : violationDatabase.getRandomViolationsForConstraintType(options.get("constraintType"), count);
+            ? violationDatabase.getRandomViolations(2 * count)
+            : violationDatabase.getRandomViolationsForConstraintType(options.get("constraintType"), 2 * count);
     List<Callable<Optional<Tile>>> tileBuilders = corrections.stream()
             .map(correction -> (Callable<Optional<Tile>>) () -> buildTile(correction))
             .collect(Collectors.toList());
@@ -60,7 +60,7 @@ final class ConstraintCorrectionsGame implements Game {
           LOGGER.error(e.getMessage(), e);
           return Stream.empty();
         }
-      }).collect(Collectors.toList());
+      }).limit(count).collect(Collectors.toList());
     } catch (InterruptedException e) {
       LOGGER.error(e.getMessage(), e);
       return Collections.emptyList();
