@@ -25,6 +25,7 @@ final class ViolationDatabase implements AutoCloseable {
   private final PreparedStatement findConstraintTypesStatement;
   private final PreparedStatement findViolationsForConstraintTypePreparedStatement;
   private final PreparedStatement logActionPreparedStatement;
+  private final PreparedStatement countByTypeStateAndUserPreparedStatement;
 
   ViolationDatabase() throws SQLException {
     connection = DriverManager.getConnection("jdbc:hsqldb:file:violationdb;sql.syntax_mys=true", "SA", "");
@@ -37,6 +38,7 @@ final class ViolationDatabase implements AutoCloseable {
     findViolationsForConstraintTypePreparedStatement = connection.prepareStatement("SELECT * FROM correction WHERE state = 'p' AND constraintType = ? ORDER BY RAND() LIMIT ?");
     findConstraintTypesStatement = connection.prepareStatement("SELECT DISTINCT constraintType FROM correction");
     logActionPreparedStatement = connection.prepareStatement("UPDATE correction SET state = ?, user = ? WHERE id = ?");
+    countByTypeStateAndUserPreparedStatement = connection.prepareStatement("SELECT state, constraintType, user, COUNT(id) AS count FROM correction GROUP BY state, constraintType, user");
   }
 
   private void setupCorrectionTable() throws SQLException {
@@ -170,13 +172,19 @@ final class ViolationDatabase implements AutoCloseable {
     }
   }
 
-  synchronized Map<String, Map<State, Long>> countByTypeAndState() {
-    Map<String, Map<State, Long>> results = new HashMap<>();
+  synchronized Map<String, Map<State, Map<String, Long>>> countByTypeStateAndUser() {
+    Map<String, Map<State, Map<String, Long>>> results = new HashMap<>();
     try {
-      ResultSet resultSet = connection.prepareStatement("SELECT state, constraintType, COUNT(id) AS count FROM correction GROUP BY state, constraintType").executeQuery();
+      ResultSet resultSet = countByTypeStateAndUserPreparedStatement.executeQuery();
       while (resultSet.next()) {
+        String user = "*";
+        try {
+          user = resultSet.getString("user");
+        } catch (SQLException e) {
+        }
         results.computeIfAbsent(resultSet.getString("constraintType"), (k) -> new HashMap<>())
-                .put(State.fromString(resultSet.getString("state")), resultSet.getLong("count"));
+                .computeIfAbsent(State.fromString(resultSet.getString("state")), (k) -> new HashMap<>())
+                .put(user, resultSet.getLong("count"));
       }
     } catch (SQLException e) {
       LOGGER.error(e.getMessage(), e);
