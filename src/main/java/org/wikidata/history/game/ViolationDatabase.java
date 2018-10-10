@@ -28,7 +28,7 @@ final class ViolationDatabase implements AutoCloseable {
   private final PreparedStatement countByTypeStateAndUserPreparedStatement;
 
   ViolationDatabase() throws SQLException {
-    connection = DriverManager.getConnection("jdbc:hsqldb:file:violationdb;sql.syntax_mys=true", "SA", "");
+    connection = DriverManager.getConnection("jdbc:hsqldb:file:violationdb;sql.syntax_mys=true;get_column_name=false", "SA", "");
     setupCorrectionTable();
     makeObsoleteForEntityPreparedStatement = connection.prepareStatement("UPDATE correction SET state = 'o' WHERE entityId = ? AND state = 'p'");
     insertionPreparedStatement = connection.prepareStatement("INSERT INTO correction (entityId, propertyId, statementId, constraintId, constraintType, message, edit, state) VALUES (?, ?, ?, ?, ?, ?, ?, 'p')");
@@ -37,8 +37,8 @@ final class ViolationDatabase implements AutoCloseable {
     findViolationsPreparedStatement = connection.prepareStatement("SELECT * FROM correction WHERE state = 'p' ORDER BY RAND() LIMIT ?");
     findViolationsForConstraintTypePreparedStatement = connection.prepareStatement("SELECT * FROM correction WHERE state = 'p' AND constraintType = ? ORDER BY RAND() LIMIT ?");
     findConstraintTypesStatement = connection.prepareStatement("SELECT DISTINCT constraintType FROM correction");
-    logActionPreparedStatement = connection.prepareStatement("UPDATE correction SET state = ?, user = ? WHERE id = ?");
-    countByTypeStateAndUserPreparedStatement = connection.prepareStatement("SELECT state, constraintType, user, COUNT(id) AS count FROM correction GROUP BY state, constraintType, user");
+    logActionPreparedStatement = connection.prepareStatement("UPDATE correction SET state = ?, user_id = ? WHERE id = ?");
+    countByTypeStateAndUserPreparedStatement = connection.prepareStatement("SELECT state, constraintType, user_id, COUNT(id) AS count FROM correction GROUP BY state, constraintType, user_id");
   }
 
   private void setupCorrectionTable() throws SQLException {
@@ -52,7 +52,7 @@ final class ViolationDatabase implements AutoCloseable {
             "  message        TEXT NOT NULL," +
             "  edit           TEXT NOT NULL," +
             "  state          VARCHAR(1) NOT NULL," +
-            "  user           VARCHAR(256)," +
+            "  user_d         VARCHAR(256)," +
             "  UNIQUE (statementId, constraintId)," +
             "  INDEX type_index ON (constraintType, constraintId) " +
             ")");
@@ -177,14 +177,12 @@ final class ViolationDatabase implements AutoCloseable {
     try {
       ResultSet resultSet = countByTypeStateAndUserPreparedStatement.executeQuery();
       while (resultSet.next()) {
-        String user = "*";
-        try {
-          user = resultSet.getString("user");
-        } catch (SQLException e) {
+        Map<String, Long> byUser = results.computeIfAbsent(resultSet.getString("constraintType"), (k) -> new HashMap<>())
+                .computeIfAbsent(State.fromString(resultSet.getString("state")), (k) -> new HashMap<>());
+        byUser.put("*", byUser.getOrDefault("*", 0L) + resultSet.getLong("count"));
+        if (resultSet.getString("user_id") != null) {
+          byUser.put(resultSet.getString("user_id"), resultSet.getLong("count"));
         }
-        results.computeIfAbsent(resultSet.getString("constraintType"), (k) -> new HashMap<>())
-                .computeIfAbsent(State.fromString(resultSet.getString("state")), (k) -> new HashMap<>())
-                .put(user, resultSet.getLong("count"));
       }
     } catch (SQLException e) {
       LOGGER.error(e.getMessage(), e);
