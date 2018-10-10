@@ -11,12 +11,8 @@ import org.wikidata.wdtk.datamodel.helpers.Datamodel;
 import org.wikidata.wdtk.datamodel.interfaces.TimeValue;
 
 import javax.xml.datatype.XMLGregorianCalendar;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * TODO: expend
@@ -80,13 +76,13 @@ class WikidataEditBuilder {
   }
 
   private Optional<Map<String, String>> oneDeletionCase(String entityId, String propertyId, Value value) {
-    String guids = getGuids(entityId, propertyId, value).collect(Collectors.joining("|"));
-    if (guids.isEmpty()) {
+    List<String> guids = getGuids(entityId, propertyId, value);
+    if (guids.size() != 1) {
       return Optional.empty();
     }
     Map<String, String> edit = new TreeMap<>();
     edit.put("action", "wbremoveclaims");
-    edit.put("claim", getGuids(entityId, propertyId, value).collect(Collectors.joining("|")));
+    edit.put("claim", guids.get(0));
     edit.put("summary", SUMMARY);
     return Optional.of(edit);
   }
@@ -116,11 +112,15 @@ class WikidataEditBuilder {
   }
 
   private Optional<Map<String, String>> oneReplacementCase(String entityId, String propertyId, Value fromValue, Value toValue) {
-    return getGuids(entityId, propertyId, fromValue).flatMap(guid -> convertDataValue(toValue).flatMap(WikidataEditBuilder::valueToSerialize).map(value -> {
+    List<String> guids = getGuids(entityId, propertyId, fromValue);
+    if (guids.size() != 1) {
+      return Optional.empty();
+    }
+    return convertDataValue(toValue).flatMap(WikidataEditBuilder::valueToSerialize).map(value -> {
       try {
         Map<String, String> edit = new TreeMap<>();
         edit.put("action", "wbsetclaimvalue");
-        edit.put("claim", guid);
+        edit.put("claim", guids.get(0));
         edit.put("snaktype", "value");
         edit.put("value", OBJECT_MAPPER.writeValueAsString(value));
         edit.put("summary", SUMMARY);
@@ -128,16 +128,17 @@ class WikidataEditBuilder {
       } catch (JsonProcessingException e) {
         throw new RuntimeException(e);
       }
-    }).map(Stream::of).orElseGet(Stream::empty)).findAny();
+    });
   }
 
-  private Stream<String> getGuids(String subject, String propertyId, Value object) {
+  private List<String> getGuids(String subject, String propertyId, Value object) {
     return model.filter(VALUE_FACTORY.createIRI(Vocabulary.WD_NAMESPACE, subject), VALUE_FACTORY.createIRI(Vocabulary.P_NAMESPACE, propertyId), null)
             .objects()
             .stream()
             .flatMap(statement -> model.filter((Resource) statement, VALUE_FACTORY.createIRI(Vocabulary.PS_NAMESPACE, propertyId), object).subjects().stream())
             .map(statement -> ((IRI) statement).getLocalName().replaceFirst("-", "\\$"))
-            .distinct();
+            .distinct()
+            .collect(Collectors.toList());
   }
 
   private Optional<org.wikidata.wdtk.datamodel.interfaces.Value> convertDataValue(Value value) {
