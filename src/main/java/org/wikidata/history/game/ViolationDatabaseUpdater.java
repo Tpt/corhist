@@ -61,7 +61,7 @@ final class ViolationDatabaseUpdater implements AutoCloseable {
                 .build();
         CLIENT.newCall(request).enqueue(newEditDataCallback);
         try {
-          Thread.sleep(1000); //We avoid to overload the server
+          Thread.sleep(5000); //We avoid to overload the server
         } catch (InterruptedException e) {
           //We don't care much
         }
