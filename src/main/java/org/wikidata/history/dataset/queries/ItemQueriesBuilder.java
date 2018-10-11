@@ -7,6 +7,7 @@ import org.wikidata.history.dataset.Constraint;
 import org.wikidata.history.sparql.Vocabulary;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -14,6 +15,16 @@ import java.util.List;
  */
 public class ItemQueriesBuilder extends AbstractQueriesBuilder {
   private static final IRI TARGET_CONSTRAINT = SimpleValueFactory.getInstance().createIRI("http://www.wikidata.org/entity/Q21503247");
+
+  private final boolean onlyWithValues;
+
+  public ItemQueriesBuilder() {
+    this(false);
+  }
+
+  public ItemQueriesBuilder(boolean onlyWithValues) {
+    this.onlyWithValues = onlyWithValues;
+  }
 
   @Override
   public boolean canBuildForConstraint(Constraint constraint) {
@@ -25,6 +36,9 @@ public class ItemQueriesBuilder extends AbstractQueriesBuilder {
     IRI targetProperty = Vocabulary.toDirectProperty(constraint.getProperty());
     IRI propertyToHave = Vocabulary.toDirectProperty((IRI) constraint.getParameters(PROPERTY_PARAMETER).get(0));
     String valuesToHaveFilter = convertItemParameter(constraint, "o2");
+    if (onlyWithValues && valuesToHaveFilter.isEmpty()) {
+      return Collections.emptyList();
+    }
 
     return Arrays.asList(
             "SELECT DISTINCT (?s AS ?targetS) (?o AS ?targetO) (false AS ?isCorrAddition) (?s AS ?corrS) (?o AS ?corrO) ?corrRev WHERE { " +

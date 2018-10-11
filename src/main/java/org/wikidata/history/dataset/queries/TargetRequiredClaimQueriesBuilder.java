@@ -7,12 +7,24 @@ import org.wikidata.history.dataset.Constraint;
 import org.wikidata.history.sparql.Vocabulary;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * https://www.wikidata.org/wiki/Help:Property_constraints_portal/Target_required_claim
  */
 public class TargetRequiredClaimQueriesBuilder extends AbstractQueriesBuilder {
+
+  private final boolean onlyWithValues;
+
+  public TargetRequiredClaimQueriesBuilder() {
+    this(false);
+  }
+
+  public TargetRequiredClaimQueriesBuilder(boolean onlyWithValues) {
+    this.onlyWithValues = onlyWithValues;
+  }
+
   private static final IRI TARGET_CONSTRAINT = SimpleValueFactory.getInstance().createIRI("http://www.wikidata.org/entity/Q21510864");
 
   @Override
@@ -25,6 +37,9 @@ public class TargetRequiredClaimQueriesBuilder extends AbstractQueriesBuilder {
     IRI targetProperty = Vocabulary.toDirectProperty(constraint.getProperty());
     IRI propertyToHave = Vocabulary.toDirectProperty((IRI) constraint.getParameters(PROPERTY_PARAMETER).get(0));
     String valuesToHaveFilter = convertItemParameter(constraint, "o2");
+    if (onlyWithValues && valuesToHaveFilter.isEmpty()) {
+      return Collections.emptyList();
+    }
 
     return Arrays.asList(
             "SELECT DISTINCT (?s AS ?targetS) (?o AS ?targetO) (false AS ?isCorrAddition) (?s AS ?corrS) (?o AS ?corrO) ?corrRev WHERE { " +

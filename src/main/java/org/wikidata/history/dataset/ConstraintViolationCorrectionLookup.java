@@ -25,10 +25,12 @@ public class ConstraintViolationCorrectionLookup {
     SPARQL_BUILDERS.put("single", new SingleValueQueriesBuilder());
     SPARQL_BUILDERS.put("type", new TypeQueriesBuilder());
     SPARQL_BUILDERS.put("targetClaim", new TargetRequiredClaimQueriesBuilder());
+    SPARQL_BUILDERS.put("targetClaimWithValue", new TargetRequiredClaimQueriesBuilder(true));
     SPARQL_BUILDERS.put("valueType", new ValueTypeQueriesBuilder());
     SPARQL_BUILDERS.put("conflict", new ConflictsWithQueriesBuilder());
     SPARQL_BUILDERS.put("oneOf", new OneOfQueriesBuilder());
     SPARQL_BUILDERS.put("item", new ItemQueriesBuilder());
+    SPARQL_BUILDERS.put("itemWithValue", new ItemQueriesBuilder(true));
     SPARQL_BUILDERS.put("format", new FormatQueriesBuilder());
   }
 
