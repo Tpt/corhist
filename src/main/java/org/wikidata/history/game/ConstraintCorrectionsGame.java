@@ -32,7 +32,7 @@ final class ConstraintCorrectionsGame implements Game {
   public Description getDescription() {
     Description description = new Description();
     description.setLabel("en", "Automated constraint violations corrections");
-    description.setDescription("en", "Possible corrections for constraints violations. They are learned from the violations already fixed in the Wikidata edit history. This game have been created by User:Tpt.");
+    description.setDescription("en", "Possible corrections for constraints violations. They are learned from the violations already fixed in the Wikidata edit history.");
 
     Option constraintTypeOption = new Option("Constraint type", "constraintType");
     constraintTypeOption.addValue("all", "all constraints");
