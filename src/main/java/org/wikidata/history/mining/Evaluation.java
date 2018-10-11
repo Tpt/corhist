@@ -12,19 +12,19 @@ final class Evaluation {
     this.testSetSize = testSetSize;
   }
 
-  public float getPrecision() {
+  float getPrecision() {
     return precision;
   }
 
-  public float getRecall() {
+  float getRecall() {
     return recall;
   }
 
-  public float getF1() {
+  float getF1() {
     return (2 * precision * recall) / (precision + recall);
   }
 
-  public int getTestSetSize() {
+  int getTestSetSize() {
     return testSetSize;
   }
 }

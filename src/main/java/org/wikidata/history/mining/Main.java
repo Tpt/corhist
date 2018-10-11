@@ -68,11 +68,17 @@ public class Main {
                 .append("mined recall").append('\t')
                 .append("mined F-1").append('\t')
                 .append("test set size").append('\t')
-                .append("deletion baseline precision")
+                .append("deletion baseline precision").append('\t')
+                .append("deletion baseline recall").append('\t')
+                .append("deletion baseline F-1").append('\t')
+                .append("addition baseline precision").append('\t')
+                .append("addition baseline recall").append('\t')
+                .append("addition baseline F-1")
                 .append('\n');
         ConstraintViolationCorrectionLookup constraintViolationCorrectionLookup = new ConstraintViolationCorrectionLookup(filter, repository);
         List<ConstraintRule> allRules = new ArrayList<>();
         DeletionBaseline deletionBaselineComputer = new DeletionBaseline(repository.getValueFactory());
+        AdditionBaseline additionBaselineComputer = new AdditionBaseline(repository.getValueFactory());
         corrections.filter(data -> !data.getValue().isEmpty())
                 .map(data -> {
                   Constraint constraint = data.getKey();
@@ -85,6 +91,7 @@ public class Main {
                   long oneReplacement = correctedViolations.getOrDefault(Pair.of(1L, 1L), 0L);
                   long otherCorrections = moreThanTwoChanges(correctedViolations);
                   Evaluation deletionBaseline = deletionBaselineComputer.compute(Stream.concat(sets.trainSet.stream(), sets.testSet.stream()));
+                  Evaluation additionBaseline = additionBaselineComputer.compute(Stream.concat(sets.trainSet.stream(), sets.testSet.stream()));
 
                   //Mining and its evaluation
                   Evaluation evaluation = DEFAULT_EVALUATION;
@@ -114,7 +121,13 @@ public class Main {
                               .append(Float.toString(evaluation.getRecall())).append('\t')
                               .append(Float.toString(evaluation.getF1())).append('\t')
                               .append(Integer.toString(evaluation.getTestSetSize())).append('\t')
-                              .append(Float.toString(deletionBaseline.getPrecision())).append('\n');
+                              .append(Float.toString(deletionBaseline.getPrecision())).append('\t')
+                              .append(Float.toString(deletionBaseline.getRecall())).append('\t')
+                              .append(Float.toString(deletionBaseline.getF1())).append('\t')
+                              .append(Float.toString(additionBaseline.getPrecision())).append('\t')
+                              .append(Float.toString(additionBaseline.getRecall())).append('\t')
+                              .append(Float.toString(additionBaseline.getF1()))
+                              .append('\n');
                     } catch (IOException e) {
                       LOGGER.error(e.getMessage(), e);
                     }
@@ -125,16 +138,18 @@ public class Main {
                                   ImmutableTriple.of(1, currentInstancesCount, currentViolationsCount),
                                   correctedViolations
                           ),
-                          ImmutableTriple.of(evaluation, evaluation, deletionBaseline)
+                          ImmutableTriple.of(evaluation, evaluation, ImmutablePair.of(deletionBaseline, additionBaseline))
                   );
                 })
                 .reduce((e1, e2) -> {
                   Evaluation evalWeighted1 = e1.getRight().getLeft();
                   Evaluation evalEqual1 = e1.getRight().getMiddle();
-                  Evaluation evalBaseline1 = e1.getRight().getRight();
+                  Evaluation evalDeletionBaseline1 = e1.getRight().getRight().getLeft();
+                  Evaluation evalAdditionBaseline1 = e1.getRight().getRight().getRight();
                   Evaluation evalWeighted2 = e2.getRight().getLeft();
                   Evaluation evalEqual2 = e2.getRight().getMiddle();
-                  Evaluation evalBaseline2 = e2.getRight().getRight();
+                  Evaluation evalDeletionBaseline2 = e2.getRight().getRight().getLeft();
+                  Evaluation evalAdditionBaseline2 = e2.getRight().getRight().getRight();
                   return ImmutablePair.of(
                           ImmutablePair.of(
                                   ImmutableTriple.of(
@@ -145,20 +160,15 @@ public class Main {
                                   add(e1.getLeft().getRight(), e2.getLeft().getRight())
                           ),
                           ImmutableTriple.of(
-                                  new Evaluation(
-                                          weightedAverage(evalWeighted1.getPrecision(), evalWeighted1.getTestSetSize(), evalWeighted2.getPrecision(), evalWeighted2.getTestSetSize()),
-                                          weightedAverage(evalWeighted1.getRecall(), evalWeighted1.getTestSetSize(), evalWeighted2.getRecall(), evalWeighted2.getTestSetSize()),
-                                          evalWeighted1.getTestSetSize() + evalWeighted2.getTestSetSize()
-                                  ),
+                                  weightedCombination(evalWeighted1, evalWeighted2),
                                   new Evaluation(
                                           weightedAverage(evalEqual1.getPrecision(), 1, evalEqual2.getPrecision(), 1),
                                           weightedAverage(evalEqual1.getRecall(), 1, evalEqual2.getRecall(), 1),
                                           evalEqual1.getTestSetSize() + evalEqual2.getTestSetSize()
                                   ),
-                                  new Evaluation(
-                                          weightedAverage(evalBaseline1.getPrecision(), 1, evalBaseline2.getPrecision(), 1),
-                                          weightedAverage(evalBaseline2.getRecall(), 1, evalBaseline2.getRecall(), 1),
-                                          evalBaseline2.getTestSetSize() + evalBaseline2.getTestSetSize()
+                                  ImmutablePair.of(
+                                          weightedCombination(evalDeletionBaseline1, evalDeletionBaseline2),
+                                          weightedCombination(evalAdditionBaseline1, evalAdditionBaseline2)
                                   )
                           )
                   );
@@ -169,7 +179,8 @@ public class Main {
           Map<Pair<Long, Long>, Long> correctedViolations = stats.getLeft().getRight();
           Evaluation evalWeighted = stats.getRight().getLeft();
           Evaluation evalEqual = stats.getRight().getMiddle();
-          Evaluation evalBaseline = stats.getRight().getRight();
+          Evaluation evalDeletionBaseline = stats.getRight().getRight().getLeft();
+          Evaluation evalAdditionBaseline = stats.getRight().getRight().getRight();
           System.out.println(
                   "Aggregated stats: " +
                           constraintsCount + " constraints, " +
@@ -185,9 +196,12 @@ public class Main {
                           evalEqual.getPrecision() + " raw precision, " +
                           evalEqual.getRecall() + " raw recall, " +
                           evalEqual.getF1() + " raw F-1," +
-                          evalBaseline.getPrecision() + " deletion baseline precision, " +
-                          evalBaseline.getRecall() + " deletion baseline recall, " +
-                          evalBaseline.getF1() + " deletion baseline F-1."
+                          evalDeletionBaseline.getPrecision() + " deletion baseline precision, " +
+                          evalDeletionBaseline.getRecall() + " deletion baseline recall, " +
+                          evalDeletionBaseline.getF1() + " deletion baseline F-1., " +
+                          evalAdditionBaseline.getPrecision() + " addition baseline precision, " +
+                          evalAdditionBaseline.getRecall() + " addition baseline recall, " +
+                          evalAdditionBaseline.getF1() + " addition baseline F-1."
           );
         });
 
@@ -209,6 +223,14 @@ public class Main {
         }
       }
     }
+  }
+
+  private static Evaluation weightedCombination(Evaluation e1, Evaluation e2) {
+    return new Evaluation(
+            weightedAverage(e1.getPrecision(), e1.getTestSetSize(), e2.getPrecision(), e2.getTestSetSize()),
+            weightedAverage(e1.getRecall(), e1.getTestSetSize(), e2.getRecall(), e2.getTestSetSize()),
+            e1.getTestSetSize() + e2.getTestSetSize()
+    );
   }
 
   private static Stream<Map.Entry<Constraint, TrainAndTestSets>> readCorrectionsFile(Path file, ValueFactory valueFactory, Collection<Constraint> constraints) throws IOException {

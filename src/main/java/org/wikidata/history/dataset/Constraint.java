@@ -2,10 +2,15 @@ package org.wikidata.history.dataset;
 
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
 public final class Constraint {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Constraint.class);
+
   private IRI id;
   private IRI property;
   private IRI type;
@@ -36,6 +41,18 @@ public final class Constraint {
 
   public List<Value> getParameters(IRI property) {
     return parameters.getOrDefault(property, Collections.emptyList());
+  }
+
+  public Optional<Value> getParameter(IRI property) {
+    List<Value> values = parameters.get(property);
+    if (values == null || values.size() == 1) {
+      return Optional.empty();
+    }
+    if (values.size() > 1) {
+      LOGGER.warn("Constraint with more than one parameter for " + property + ": " + this);
+      return Optional.empty();
+    }
+    return Optional.of(values.get(0));
   }
 
   void addParameter(IRI property, Value value) {
