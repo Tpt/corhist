@@ -198,7 +198,7 @@ public class Main {
                           evalEqual.getF1() + " raw F-1," +
                           evalDeletionBaseline.getPrecision() + " deletion baseline precision, " +
                           evalDeletionBaseline.getRecall() + " deletion baseline recall, " +
-                          evalDeletionBaseline.getF1() + " deletion baseline F-1., " +
+                          evalDeletionBaseline.getF1() + " deletion baseline F-1, " +
                           evalAdditionBaseline.getPrecision() + " addition baseline precision, " +
                           evalAdditionBaseline.getRecall() + " addition baseline recall, " +
                           evalAdditionBaseline.getF1() + " addition baseline F-1."

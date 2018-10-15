@@ -45,11 +45,7 @@ public final class Constraint {
 
   public Optional<Value> getParameter(IRI property) {
     List<Value> values = parameters.get(property);
-    if (values == null || values.size() == 1) {
-      return Optional.empty();
-    }
-    if (values.size() > 1) {
-      LOGGER.warn("Constraint with more than one parameter for " + property + ": " + this);
+    if (values == null || values.size() > 1) {
       return Optional.empty();
     }
     return Optional.of(values.get(0));
