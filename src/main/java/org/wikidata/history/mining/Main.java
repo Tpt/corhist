@@ -38,24 +38,29 @@ public class Main {
   public static void main(String[] args) throws ParseException, IOException {
     Options options = new Options();
     options.addOption("c", "constraints", true, "Constraints to  target");
+    options.addOption("l", "limit", true, "Number of corrections to get per correction seed pattern");
     CommandLineParser parser = new DefaultParser();
     CommandLine line = parser.parse(options, args);
 
     Path index = Paths.get("wd-history-index");
     String filter = line.getOptionValue("constraints", "*");
+    String limitStr = line.getOptionValue("limit", "");
+    OptionalLong limit = limitStr.isEmpty() ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(limitStr));
+    String qualifiedFilter = filter + (limit.isPresent() ? "-" + limit.getAsLong() : "");
 
     try (HistoryRepository repository = new HistoryRepository(index)) {
       //Read constraints
       Collection<Constraint> constraints = new ConstraintsListBuilder().build();
 
       //Read or write corrections
-      Path correctionsFile = Paths.get("constraint-corrections-" + filter + ".tsv");
+      Path correctionsFile = Paths.get("constraint-corrections-" + qualifiedFilter + ".tsv");
+      ConstraintViolationCorrectionLookup constraintViolationCorrectionLookup = new ConstraintViolationCorrectionLookup(filter, repository, limit);
       Stream<Map.Entry<Constraint, TrainAndTestSets>> corrections = Files.exists(correctionsFile)
               ? readCorrectionsFile(correctionsFile, repository.getValueFactory(), constraints)
-              : findAndSaveCorrections(correctionsFile, new ConstraintViolationCorrectionLookup(filter, repository), constraints);
+              : findAndSaveCorrections(correctionsFile, constraintViolationCorrectionLookup, constraints);
 
       System.out.println("Starting to learn corrections rules");
-      try (BufferedWriter statsWriter = Files.newBufferedWriter(Paths.get("constraint-stats-" + filter + ".tsv"))) {
+      try (BufferedWriter statsWriter = Files.newBufferedWriter(Paths.get("constraint-stats-" + qualifiedFilter + ".tsv"))) {
         statsWriter.append("constraint").append('\t')
                 .append("property").append('\t')
                 .append("property instances").append('\t')
@@ -75,7 +80,6 @@ public class Main {
                 .append("addition baseline recall").append('\t')
                 .append("addition baseline F-1")
                 .append('\n');
-        ConstraintViolationCorrectionLookup constraintViolationCorrectionLookup = new ConstraintViolationCorrectionLookup(filter, repository);
         List<ConstraintRule> allRules = new ArrayList<>();
         DeletionBaseline deletionBaselineComputer = new DeletionBaseline(repository.getValueFactory());
         AdditionBaseline additionBaselineComputer = new AdditionBaseline(repository.getValueFactory());
@@ -206,8 +210,8 @@ public class Main {
         });
 
         try (
-                ObjectOutputStream serializedOutputStream = new ObjectOutputStream(Files.newOutputStream(Paths.get("constraint-rules-" + filter + ".ser")));
-                BufferedWriter textWriter = Files.newBufferedWriter(Paths.get("constraint-rules-" + filter + ".txt"))
+                ObjectOutputStream serializedOutputStream = new ObjectOutputStream(Files.newOutputStream(Paths.get("constraint-rules-" + qualifiedFilter + ".ser")));
+                BufferedWriter textWriter = Files.newBufferedWriter(Paths.get("constraint-rules-" + qualifiedFilter + ".txt"))
         ) {
           allRules.sort(Comparator.reverseOrder());
           for (ConstraintRule rule : allRules) {

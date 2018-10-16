@@ -39,17 +39,23 @@ public class ConstraintViolationCorrectionLookup {
   private final ValueFactory valueFactory;
   private final TupleQuery expandCorrectionFromAdditionQuery;
   private final TupleQuery expandCorrectionFromDeletionQuery;
+  private final OptionalLong limit;
 
   public ConstraintViolationCorrectionLookup(String queryBuilders, Repository repository) {
-    this(filterQueriesBuilder(queryBuilders), repository);
+    this(filterQueriesBuilder(queryBuilders), repository, OptionalLong.empty());
   }
 
-  ConstraintViolationCorrectionLookup(List<QueriesForConstraintCorrectionsBuilder> queryBuilders, Repository repository) {
+  public ConstraintViolationCorrectionLookup(String queryBuilders, Repository repository, OptionalLong limit) {
+    this(filterQueriesBuilder(queryBuilders), repository, limit);
+  }
+
+  private ConstraintViolationCorrectionLookup(List<QueriesForConstraintCorrectionsBuilder> queryBuilders, Repository repository, OptionalLong limit) {
     this.queryBuilders = queryBuilders;
     this.repository = repository;
     this.valueFactory = repository.getValueFactory();
     this.expandCorrectionFromAdditionQuery = buildExpandCorrectionFromAdditionQuery();
     this.expandCorrectionFromDeletionQuery = buildExpandCorrectionFromDeletionQuery();
+    this.limit = limit;
   }
 
   private static List<QueriesForConstraintCorrectionsBuilder> filterQueriesBuilder(String selector) {
@@ -78,7 +84,8 @@ public class ConstraintViolationCorrectionLookup {
   private Stream<String> findQueries(Constraint constraint) {
     return queryBuilders.stream()
             .filter(queryBuilder -> queryBuilder.canBuildForConstraint(constraint))
-            .flatMap(queryBuilder -> queryBuilder.buildCorrectionsLookupQueries(constraint).stream());
+            .flatMap(queryBuilder -> queryBuilder.buildCorrectionsLookupQueries(constraint).stream())
+            .map(query -> query + (limit.isPresent() ? " LIMIT " + limit.getAsLong() : ""));
   }
 
   private ConstraintViolationCorrection buildCorrection(BindingSet bindingSet, Constraint constraint) {
