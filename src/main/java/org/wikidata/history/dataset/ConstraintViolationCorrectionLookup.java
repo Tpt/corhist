@@ -1,6 +1,6 @@
 package org.wikidata.history.dataset;
 
-import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.rdf4j.model.*;
 import org.eclipse.rdf4j.model.impl.BooleanLiteral;
 import org.eclipse.rdf4j.query.BindingSet;
@@ -105,7 +105,7 @@ public class ConstraintViolationCorrectionLookup {
                     ? Vocabulary.HISTORY_ADDITION
                     : Vocabulary.HISTORY_DELETION
     );
-    ImmutablePair<Set<Statement>, IRI> correctionAndRevision = expandCorrection(mainCorrection, target, corrRevision);
+    Pair<Set<Statement>, IRI> correctionAndRevision = expandCorrection(mainCorrection, target, corrRevision);
     return new ConstraintViolationCorrection(
             constraint,
             target,
@@ -154,7 +154,7 @@ public class ConstraintViolationCorrectionLookup {
             "}");
   }
 
-  private synchronized ImmutablePair<Set<Statement>, IRI> expandCorrection(Statement mainCorrection, Statement target, IRI mainRevision) {
+  private synchronized Pair<Set<Statement>, IRI> expandCorrection(Statement mainCorrection, Statement target, IRI mainRevision) {
     TupleQuery query = mainCorrection.getContext().equals(Vocabulary.HISTORY_DELETION)
             ? expandCorrectionFromDeletionQuery
             : expandCorrectionFromAdditionQuery;
@@ -194,7 +194,7 @@ public class ConstraintViolationCorrectionLookup {
     Set<Statement> correction = (additionalTriples.size() > 1) ? new HashSet<>() : additionalTriples;
     correction.add(mainCorrection);
     long revisionId = Math.min(Long.parseLong(mainRevision.getLocalName()), additionalRevisionId);
-    return ImmutablePair.of(correction, valueFactory.createIRI(Vocabulary.REVISION_NAMESPACE, Long.toString(revisionId)));
+    return Pair.of(correction, valueFactory.createIRI(Vocabulary.REVISION_NAMESPACE, Long.toString(revisionId)));
   }
 
   private boolean isCorrectionStillApplied(ConstraintViolationCorrection correction) {

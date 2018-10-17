@@ -1,9 +1,8 @@
 package org.wikidata.history.mining;
 
 import org.apache.commons.cli.*;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.ImmutableTriple;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.lang3.tuple.Triple;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.ValueFactory;
@@ -137,54 +136,43 @@ public class Main {
                     }
                   }
 
-                  return ImmutablePair.of(
-                          ImmutablePair.of(
-                                  ImmutableTriple.of(1, currentInstancesCount, currentViolationsCount),
+                  return Pair.of(
+                          Pair.of(
+                                  Triple.of(1, currentInstancesCount, currentViolationsCount),
                                   correctedViolations
                           ),
-                          ImmutableTriple.of(evaluation, evaluation, ImmutablePair.of(deletionBaseline, additionBaseline))
-                  );
-                })
-                .reduce((e1, e2) -> {
-                  Evaluation evalWeighted1 = e1.getRight().getLeft();
-                  Evaluation evalEqual1 = e1.getRight().getMiddle();
-                  Evaluation evalDeletionBaseline1 = e1.getRight().getRight().getLeft();
-                  Evaluation evalAdditionBaseline1 = e1.getRight().getRight().getRight();
-                  Evaluation evalWeighted2 = e2.getRight().getLeft();
-                  Evaluation evalEqual2 = e2.getRight().getMiddle();
-                  Evaluation evalDeletionBaseline2 = e2.getRight().getRight().getLeft();
-                  Evaluation evalAdditionBaseline2 = e2.getRight().getRight().getRight();
-                  return ImmutablePair.of(
-                          ImmutablePair.of(
-                                  ImmutableTriple.of(
-                                          e1.getLeft().getLeft().getLeft() + e2.getLeft().getLeft().getLeft(),
-                                          e1.getLeft().getLeft().getMiddle() + e2.getLeft().getLeft().getMiddle(),
-                                          e1.getLeft().getLeft().getRight() + e2.getLeft().getLeft().getRight()
-                                  ),
-                                  add(e1.getLeft().getRight(), e2.getLeft().getRight())
-                          ),
-                          ImmutableTriple.of(
-                                  weightedCombination(evalWeighted1, evalWeighted2),
-                                  new Evaluation(
-                                          weightedAverage(evalEqual1.getPrecision(), 1, evalEqual2.getPrecision(), 1),
-                                          weightedAverage(evalEqual1.getRecall(), 1, evalEqual2.getRecall(), 1),
-                                          evalEqual1.getTestSetSize() + evalEqual2.getTestSetSize()
-                                  ),
-                                  ImmutablePair.of(
-                                          weightedCombination(evalDeletionBaseline1, evalDeletionBaseline2),
-                                          weightedCombination(evalAdditionBaseline1, evalAdditionBaseline2)
-                                  )
+                          Triple.of(
+                                  Pair.of(evaluation, evaluation)
+                                  , Pair.of(deletionBaseline, deletionBaseline)
+                                  , Pair.of(additionBaseline, additionBaseline)
                           )
                   );
-                }).ifPresent(stats -> {
+                })
+                .reduce((e1, e2) -> Pair.of(
+                        Pair.of(
+                                Triple.of(
+                                        e1.getLeft().getLeft().getLeft() + e2.getLeft().getLeft().getLeft(),
+                                        e1.getLeft().getLeft().getMiddle() + e2.getLeft().getLeft().getMiddle(),
+                                        e1.getLeft().getLeft().getRight() + e2.getLeft().getLeft().getRight()
+                                ),
+                                add(e1.getLeft().getRight(), e2.getLeft().getRight())
+                        ),
+                        Triple.of(
+                                weightedAndAverageCombination(e1.getRight().getLeft(), e2.getRight().getLeft()),
+                                weightedAndAverageCombination(e1.getRight().getMiddle(), e2.getRight().getMiddle()),
+                                weightedAndAverageCombination(e1.getRight().getRight(), e2.getRight().getRight())
+                        )
+                )).ifPresent(stats -> {
           long constraintsCount = stats.getLeft().getLeft().getLeft();
           long currentInstancesCount = stats.getLeft().getLeft().getMiddle();
           long currentViolationsCount = stats.getLeft().getLeft().getRight();
           Map<Pair<Long, Long>, Long> correctedViolations = stats.getLeft().getRight();
-          Evaluation evalWeighted = stats.getRight().getLeft();
-          Evaluation evalEqual = stats.getRight().getMiddle();
-          Evaluation evalDeletionBaseline = stats.getRight().getRight().getLeft();
-          Evaluation evalAdditionBaseline = stats.getRight().getRight().getRight();
+          Evaluation evalWeighted = stats.getRight().getLeft().getLeft();
+          Evaluation evalAverage = stats.getRight().getLeft().getLeft();
+          Evaluation evalDeletionBaselineWeighted = stats.getRight().getMiddle().getLeft();
+          Evaluation evalDeletionBaselineAverage = stats.getRight().getMiddle().getLeft();
+          Evaluation evalAdditionBaselineWeighted = stats.getRight().getRight().getLeft();
+          Evaluation evalAdditionBaselineAverage = stats.getRight().getRight().getLeft();
           System.out.println(
                   "Aggregated stats: " +
                           constraintsCount + " constraints, " +
@@ -197,15 +185,21 @@ public class Main {
                           evalWeighted.getPrecision() + " weighted precision, " +
                           evalWeighted.getRecall() + " weighted recall, " +
                           evalWeighted.getF1() + " weighted F-1, " +
-                          evalEqual.getPrecision() + " raw precision, " +
-                          evalEqual.getRecall() + " raw recall, " +
-                          evalEqual.getF1() + " raw F-1," +
-                          evalDeletionBaseline.getPrecision() + " deletion baseline precision, " +
-                          evalDeletionBaseline.getRecall() + " deletion baseline recall, " +
-                          evalDeletionBaseline.getF1() + " deletion baseline F-1, " +
-                          evalAdditionBaseline.getPrecision() + " addition baseline precision, " +
-                          evalAdditionBaseline.getRecall() + " addition baseline recall, " +
-                          evalAdditionBaseline.getF1() + " addition baseline F-1."
+                          evalAverage.getPrecision() + " average precision, " +
+                          evalAverage.getRecall() + " average recall, " +
+                          evalAverage.getF1() + " average F-1," +
+                          evalDeletionBaselineWeighted.getPrecision() + " deletion baseline weighted precision, " +
+                          evalDeletionBaselineWeighted.getRecall() + " deletion baseline weighted recall, " +
+                          evalDeletionBaselineWeighted.getF1() + " deletion baseline weighted F-1, " +
+                          evalDeletionBaselineAverage.getPrecision() + " deletion baseline average precision, " +
+                          evalDeletionBaselineAverage.getRecall() + " deletion baseline average recall, " +
+                          evalDeletionBaselineAverage.getF1() + " deletion baseline average F-1, " +
+                          evalAdditionBaselineWeighted.getPrecision() + " addition baseline weighted precision, " +
+                          evalAdditionBaselineWeighted.getRecall() + " addition baseline weighted recall, " +
+                          evalAdditionBaselineWeighted.getF1() + " addition baseline weighted F-1, " +
+                          evalAdditionBaselineAverage.getPrecision() + " addition baseline average precision, " +
+                          evalAdditionBaselineAverage.getRecall() + " addition baseline average recall, " +
+                          evalAdditionBaselineAverage.getF1() + " addition baseline average F-1."
           );
         });
 
@@ -229,10 +223,25 @@ public class Main {
     }
   }
 
+  private static Pair<Evaluation, Evaluation> weightedAndAverageCombination(Pair<Evaluation, Evaluation> e1, Pair<Evaluation, Evaluation> e2) {
+    return Pair.of(
+            weightedCombination(e1.getLeft(), e2.getLeft()),
+            averageCombination(e1.getRight(), e2.getRight())
+    );
+  }
+
   private static Evaluation weightedCombination(Evaluation e1, Evaluation e2) {
     return new Evaluation(
             weightedAverage(e1.getPrecision(), e1.getTestSetSize(), e2.getPrecision(), e2.getTestSetSize()),
             weightedAverage(e1.getRecall(), e1.getTestSetSize(), e2.getRecall(), e2.getTestSetSize()),
+            e1.getTestSetSize() + e2.getTestSetSize()
+    );
+  }
+
+  private static Evaluation averageCombination(Evaluation e1, Evaluation e2) {
+    return new Evaluation(
+            weightedAverage(e1.getPrecision(), 1, e2.getPrecision(), 1),
+            weightedAverage(e1.getRecall(), 1, e2.getRecall(), 1),
             e1.getTestSetSize() + e2.getTestSetSize()
     );
   }
@@ -256,7 +265,7 @@ public class Main {
     Map<Constraint, TrainAndTestSets> setsForConstraint = constraints.stream().map(constraint -> {
       TrainAndTestSets sets = new TrainAndTestSets();
       constraintViolationCorrectionLookup.findCorrections(constraint).forEach(sets::add);
-      return ImmutablePair.of(constraint, sets);
+      return Pair.of(constraint, sets);
     }).collect(Collectors.toMap(Pair::getLeft, Pair::getRight));
 
 

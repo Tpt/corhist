@@ -1,6 +1,5 @@
 package org.wikidata.history.mining;
 
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
@@ -63,7 +62,7 @@ class Miner {
                 (k) -> new ArrayList<>()
         ).add(bindingSet);
         violationAndCorrectionPatterns.computeIfAbsent(
-                ImmutablePair.of(violationPattern, correctionPatterns),
+                Pair.of(violationPattern, correctionPatterns),
                 (k) -> new ArrayList<>()
         ).add(bindingSet);
       });
@@ -86,11 +85,11 @@ class Miner {
     Value object = correction.getTargetTriple().getObject();
     Value graph = Vocabulary.toGlobalState(Vocabulary.previousRevision(correction.getCorrectionRevision())); //TODO: before first correction part
     return Stream.of(
-            ImmutablePair.of(
+            Pair.of(
                     new StatementPattern(S, predicate, O, G),
                     new ListBindingSet(SOG, subject, object, graph)
             ),
-            ImmutablePair.of(
+            Pair.of(
                     new StatementPattern(S, predicate, TupleExprs.createConstVar(correction.getTargetTriple().getObject()), G),
                     new ListBindingSet(SG, subject, graph)
             )
