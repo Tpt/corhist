@@ -6,16 +6,14 @@ import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.wikidata.history.dataset.Constraint;
 import org.wikidata.history.dataset.ConstraintViolationCorrection;
-import org.wikidata.history.dataset.QueriesForConstraintCorrectionsBuilder;
 import org.wikidata.history.sparql.Vocabulary;
 
 import java.util.Collections;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-/**
- * TODO: only works for item and valueType
- */
+import static org.wikidata.history.dataset.QueriesForConstraintCorrectionsBuilder.*;
+
 class AdditionBaseline {
 
   private final ValueFactory valueFactory;
@@ -47,7 +45,7 @@ class AdditionBaseline {
     switch (constraint.getType().getLocalName()) {
       case "Q21510855":
         //Inverse
-        return correction.getConstraint().getParameter(QueriesForConstraintCorrectionsBuilder.PROPERTY_PARAMETER).map(propertyToHave ->
+        return correction.getConstraint().getParameter(PROPERTY_PARAMETER).map(propertyToHave ->
                 valueFactory.createStatement(
                         (Resource) correction.getTargetTriple().getObject(),
                         Vocabulary.toDirectProperty((IRI) propertyToHave),
@@ -65,8 +63,8 @@ class AdditionBaseline {
         ));
       case "Q21503247":
         //Item
-        return correction.getConstraint().getParameter(QueriesForConstraintCorrectionsBuilder.PROPERTY_PARAMETER).flatMap(propertyToHave ->
-                correction.getConstraint().getParameter(QueriesForConstraintCorrectionsBuilder.ITEM_PARAMETER).map(value ->
+        return correction.getConstraint().getParameter(PROPERTY_PARAMETER).flatMap(propertyToHave ->
+                correction.getConstraint().getParameter(ITEM_PARAMETER).map(value ->
                         valueFactory.createStatement(
                                 correction.getTargetTriple().getSubject(),
                                 Vocabulary.toDirectProperty((IRI) propertyToHave),
@@ -77,8 +75,8 @@ class AdditionBaseline {
         );
       case "Q21510864":
         //Target require claim
-        return correction.getConstraint().getParameter(QueriesForConstraintCorrectionsBuilder.PROPERTY_PARAMETER).flatMap(propertyToHave ->
-                correction.getConstraint().getParameter(QueriesForConstraintCorrectionsBuilder.ITEM_PARAMETER).map(value ->
+        return correction.getConstraint().getParameter(PROPERTY_PARAMETER).flatMap(propertyToHave ->
+                correction.getConstraint().getParameter(ITEM_PARAMETER).map(value ->
                         valueFactory.createStatement(
                                 (Resource) correction.getTargetTriple().getObject(),
                                 Vocabulary.toDirectProperty((IRI) propertyToHave),
@@ -87,9 +85,40 @@ class AdditionBaseline {
                         )
                 )
         );
+      case "Q21503250":
+        //Type
+        return getRelationParameter(constraint).flatMap(propertyToHave -> constraint.getParameter(CLASS_PARAMETER).map(type ->
+                valueFactory.createStatement(
+                        correction.getTargetTriple().getSubject(),
+                        Vocabulary.toDirectProperty(propertyToHave),
+                        type,
+                        Vocabulary.HISTORY_ADDITION
+                )
+        ));
+      case "Q21510865":
+        //Value Type
+        return getRelationParameter(constraint).flatMap(propertyToHave -> constraint.getParameter(CLASS_PARAMETER).map(type ->
+                valueFactory.createStatement(
+                        (Resource) correction.getTargetTriple().getObject(),
+                        Vocabulary.toDirectProperty(propertyToHave),
+                        type,
+                        Vocabulary.HISTORY_ADDITION
+                )
+        ));
       default:
-        //TODO: type and value type
         return Optional.empty();
     }
+  }
+
+  private Optional<IRI> getRelationParameter(Constraint constraint) {
+    return constraint.getParameter(RELATION_PARAMETER).flatMap(relation -> {
+      if (relation.equals(INSTANCEOF_ENTITY)) {
+        return Optional.of(INSTANCEOF_PROPERTY);
+      } else if (relation.equals(SUBCLASSOF_ENTITY)) {
+        return Optional.of(SUBCLASSOF_PROPERTY);
+      } else {
+        return Optional.empty();
+      }
+    });
   }
 }
