@@ -3,10 +3,10 @@ import requests
 data = requests.get('https://tools.wmflabs.org/corhist/stats').json()
 
 types = {
-    'Type': [''],
-    'Value type': [''],
+    'Type': ['Q21503250'],
+    'Value type': ['Q21510865'],
     'One-of': ['Q21510859'],
-    'Item requires stm.': [''],
+    'Item requires stm.': ['Q21503247'],
     'Value requires stm.': ['Q21510864'],
     'Conflict with': ['Q21502838'],
     'Inverse/Symmetric': ['Q21510855', 'Q21510862'],
