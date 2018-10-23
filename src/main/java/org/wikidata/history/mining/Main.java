@@ -251,8 +251,14 @@ public class Main {
     Map<IRI, Constraint> constraintsMap = constraints.stream().collect(Collectors.toMap(Constraint::getId, Function.identity()));
     Map<Constraint, TrainAndTestSets> setsForConstraint = new HashMap<>();
     try (Stream<String> lines = Files.lines(file)) {
-      lines.map(line -> ConstraintViolationCorrection.read(line, valueFactory, constraintsMap)).forEach(correction ->
-              setsForConstraint.computeIfAbsent(correction.getConstraint(), (k) -> new TrainAndTestSets()).add(correction)
+      lines.forEach(line -> {
+                try {
+                  ConstraintViolationCorrection correction = ConstraintViolationCorrection.read(line, valueFactory, constraintsMap);
+                  setsForConstraint.computeIfAbsent(correction.getConstraint(), (k) -> new TrainAndTestSets()).add(correction);
+                } catch (IllegalArgumentException e) {
+                  LOGGER.warn(e.getMessage(), e);
+                }
+              }
       );
     }
     System.out.println("Corrections dataset reading done");
