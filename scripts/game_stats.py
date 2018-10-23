@@ -27,8 +27,8 @@ for type, type_ids in types.items():
     ratio = round(result.get('APPROVED', 0) / (result.get('APPROVED', 0) + result.get('REJECTED', 0)), 2) \
         if (result.get('APPROVED', 0) + result.get('REJECTED', 0)) != 0 \
         else ''
-    print('{} & {} & {} & {} & {} & {} \\\\'.format(
-        type, all, result.get('APPROVED', 0), result.get('REJECTED', 0), result.get('OBSOLETE', 0), ratio)
+    print('{} & {} & {} & {} & {} \\\\'.format(
+        type, all, result.get('APPROVED', 0), result.get('REJECTED', 0), ratio)
     )
 
 users.remove('*')
