@@ -168,11 +168,11 @@ public class Main {
           long currentViolationsCount = stats.getLeft().getLeft().getRight();
           Map<Pair<Long, Long>, Long> correctedViolations = stats.getLeft().getRight();
           Evaluation evalWeighted = stats.getRight().getLeft().getLeft();
-          Evaluation evalAverage = stats.getRight().getLeft().getLeft();
+          Evaluation evalAverage = stats.getRight().getLeft().getRight();
           Evaluation evalDeletionBaselineWeighted = stats.getRight().getMiddle().getLeft();
-          Evaluation evalDeletionBaselineAverage = stats.getRight().getMiddle().getLeft();
+          Evaluation evalDeletionBaselineAverage = stats.getRight().getMiddle().getRight();
           Evaluation evalAdditionBaselineWeighted = stats.getRight().getRight().getLeft();
-          Evaluation evalAdditionBaselineAverage = stats.getRight().getRight().getLeft();
+          Evaluation evalAdditionBaselineAverage = stats.getRight().getRight().getRight();
           System.out.println(
                   "Aggregated stats: " +
                           constraintsCount + " constraints, " +
