@@ -127,6 +127,7 @@ public class Main {
                                 rule.getSupport() + "\n"
                 );
               }
+              rulesTextWriter.flush();
             }
           }
 
@@ -150,6 +151,7 @@ public class Main {
                     .append(Float.toString(additionBaseline.getRecall())).append('\t')
                     .append(Float.toString(additionBaseline.getF1()))
                     .append('\n');
+            statsWriter.flush();
           }
 
 
