@@ -25,8 +25,12 @@ def weighted_average(v1, p1, v2, p2):
     return (v1 * p1 + v2 * p2) / (p1 + p2)
 
 
-def read_eval(row, prefix):
-    return Eval(row[prefix + ' precision'], row[prefix + ' recall'], row['test set size'])
+def read_eval(row, prefix, default_precision=math.nan, default_recall=math.nan):
+    return Eval(
+        row[prefix + ' precision'] if prefix + ' precision' in row else default_precision,
+        row[prefix + ' recall'] if prefix + ' recall' in row else default_recall,
+        row['test set size']
+    )
 
 
 def weighted_combination(e1: Eval, e2: Eval):
