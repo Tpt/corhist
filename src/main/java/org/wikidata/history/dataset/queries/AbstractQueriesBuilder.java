@@ -53,7 +53,7 @@ abstract class AbstractQueriesBuilder implements QueriesForConstraintCorrections
   }
 
   protected String buildSamplingConstraint(String variableName, long instancesCount) {
-    long div = Math.min(1L, instancesCount / 1_000_000L);
+    long div = Math.max(1L, instancesCount / 1_000_000L);
 
     return " ?" + variableName + " <http://wikiba.se/history/ontology#revisionId> ?revId FILTER(?revId / " + div + " = ROUND(?revId / " + div + ")) ";
   }
