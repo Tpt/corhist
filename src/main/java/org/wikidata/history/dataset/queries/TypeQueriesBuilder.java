@@ -44,7 +44,7 @@ public class TypeQueriesBuilder extends AbstractQueriesBuilder {
                     " GRAPH <" + Vocabulary.CURRENT_GLOBAL_STATE + "> { ?type <" + Vocabulary.toDirectProperty(SUBCLASSOF_PROPERTY) + ">* ?o2 . }" +
                     "}}" +
                     " GRAPH ?add { ?s " + relationsToHave + " ?type } . " +
-                    buildSamplingConstraint("del", instancesCount) +
+                    buildSamplingConstraint("add", instancesCount) +
                     " ?corrRev <http://wikiba.se/history/ontology#additions> ?add ; " +
                     "          <http://wikiba.se/history/ontology#deletions> ?del ; " +
                     "      <http://wikiba.se/history/ontology#previousRevision>/<http://wikiba.se/history/ontology#globalState> ?global . " +

@@ -53,7 +53,7 @@ public class TargetRequiredClaimQueriesBuilder extends AbstractQueriesBuilder {
             "SELECT DISTINCT (?s AS ?targetS) (?o AS ?targetO) (true AS ?isCorrAddition) (?o AS ?corrS) (<" + propertyToHave + "> AS ?corrP) (?o2 AS ?corrO) ?corrRev WHERE { " +
                     valuesToHaveFilter +
                     " GRAPH ?add { ?o <" + propertyToHave + "> ?o2 } . " +
-                    buildSamplingConstraint("del", instancesCount) +
+                    buildSamplingConstraint("add", instancesCount) +
                     " ?corrRev <http://wikiba.se/history/ontology#additions> ?add ; " +
                     "      <http://wikiba.se/history/ontology#previousRevision>/<http://wikiba.se/history/ontology#globalState> ?global . " +
                     " GRAPH ?global { ?s <" + targetProperty + "> ?o } " +
