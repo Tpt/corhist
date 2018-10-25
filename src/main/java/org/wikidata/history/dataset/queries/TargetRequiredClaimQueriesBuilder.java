@@ -32,7 +32,7 @@ public class TargetRequiredClaimQueriesBuilder extends AbstractQueriesBuilder {
   }
 
   @Override
-  public List<String> buildCorrectionsLookupQueries(Constraint constraint) {
+  public List<String> buildCorrectionsLookupQueries(Constraint constraint, long instancesCount) {
     IRI targetProperty = Vocabulary.toDirectProperty(constraint.getProperty());
     IRI propertyToHave = Vocabulary.toDirectProperty((IRI) constraint.getParameters(PROPERTY_PARAMETER).get(0));
     String valuesToHaveFilter = convertItemParameter(constraint, "o2");
@@ -40,6 +40,7 @@ public class TargetRequiredClaimQueriesBuilder extends AbstractQueriesBuilder {
     return Arrays.asList(
             "SELECT DISTINCT (?s AS ?targetS) (?o AS ?targetO) (false AS ?isCorrAddition) (?s AS ?corrS) (?o AS ?corrO) ?corrRev WHERE { " +
                     " GRAPH ?del { ?s <" + targetProperty + "> ?o } . " +
+                    buildSamplingConstraint("del", instancesCount) +
                     " ?corrRev <http://wikiba.se/history/ontology#deletions> ?del ; " +
                     "      <http://wikiba.se/history/ontology#additions> ?add ; " +
                     "      <http://wikiba.se/history/ontology#previousRevision>/<http://wikiba.se/history/ontology#globalState> ?global . " +
@@ -52,6 +53,7 @@ public class TargetRequiredClaimQueriesBuilder extends AbstractQueriesBuilder {
             "SELECT DISTINCT (?s AS ?targetS) (?o AS ?targetO) (true AS ?isCorrAddition) (?o AS ?corrS) (<" + propertyToHave + "> AS ?corrP) (?o2 AS ?corrO) ?corrRev WHERE { " +
                     valuesToHaveFilter +
                     " GRAPH ?add { ?o <" + propertyToHave + "> ?o2 } . " +
+                    buildSamplingConstraint("del", instancesCount) +
                     " ?corrRev <http://wikiba.se/history/ontology#additions> ?add ; " +
                     "      <http://wikiba.se/history/ontology#previousRevision>/<http://wikiba.se/history/ontology#globalState> ?global . " +
                     " GRAPH ?global { ?s <" + targetProperty + "> ?o } " +

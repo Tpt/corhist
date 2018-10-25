@@ -30,7 +30,13 @@ public interface QueriesForConstraintCorrectionsBuilder {
    * They should start with "SELECT ?targetS ?targetO ?isCorrAddition ?corrS ?corrO ?corrRev WHERE"
    * You could also return ?corrP for the property used by the correction (by default the constraint property)
    */
-  List<String> buildCorrectionsLookupQueries(Constraint constraint);
+  default List<String> buildCorrectionsLookupQueries(Constraint constraint) {
+    return buildCorrectionsLookupQueries(constraint, 0);
+  }
+
+  default List<String> buildCorrectionsLookupQueries(Constraint constraint, long numberOfInstances) {
+    return buildCorrectionsLookupQueries(constraint);
+  }
 
 
   /**

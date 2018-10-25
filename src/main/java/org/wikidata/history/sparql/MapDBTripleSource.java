@@ -75,6 +75,25 @@ final class MapDBTripleSource implements TripleSource, AutoCloseable {
       return getStatementsForRevisionConversionRelation(subj, pred, obj, Vocabulary.SnapshotType.NONE, Vocabulary.SnapshotType.ADDITIONS);
     } else if (Vocabulary.HISTORY_DELETIONS.equals(pred)) {
       return getStatementsForRevisionConversionRelation(subj, pred, obj, Vocabulary.SnapshotType.NONE, Vocabulary.SnapshotType.DELETIONS);
+    } else if (Vocabulary.HISTORY_REVISION_ID.equals(pred)) {
+      if (subj == null) {
+        if (obj == null) {
+          throw new QueryEvaluationException("not supported yet ? " + pred + " ?"); //TODO
+        } else if (obj instanceof Literal) {
+          return toIteration(valueFactory.createRevisionIRI(((Literal) obj).longValue()), pred, obj);
+        } else {
+          return EMPTY_ITERATION;
+        }
+      } else {
+        NumericValueFactory.RevisionIRI subjRevision = convertRevisionIRI(subj);
+        if (obj == null) {
+          return toIteration(subj, pred, valueFactory.createLiteral(subjRevision.getRevisionId()));
+        } else {
+          return valueFactory.createLiteral(subjRevision.getRevisionId()).equals(obj)
+                  ? toIteration(subj, pred, obj)
+                  : EMPTY_ITERATION;
+        }
+      }
     } else if (Vocabulary.HISTORY_PREVIOUS_REVISION.equals(pred)) {
       if (subj == null) {
         if (obj == null) {

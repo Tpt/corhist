@@ -29,6 +29,7 @@ public final class Vocabulary {
   public static final IRI HISTORY_PREVIOUS_REVISION = VALUE_FACTORY.createIRI("http://wikiba.se/history/ontology#previousRevision");
   public static final IRI HISTORY_NEXT_REVISION = VALUE_FACTORY.createIRI("http://wikiba.se/history/ontology#nextRevision");
   public static final IRI HISTORY_GLOBAL_STATE = VALUE_FACTORY.createIRI("http://wikiba.se/history/ontology#globalState");
+  public static final IRI HISTORY_REVISION_ID = VALUE_FACTORY.createIRI("http://wikiba.se/history/ontology#revisionId");
 
   public static final String WD_NAMESPACE = "http://www.wikidata.org/entity/";
   public static final String WDS_NAMESPACE = "http://www.wikidata.org/entity/statement/";

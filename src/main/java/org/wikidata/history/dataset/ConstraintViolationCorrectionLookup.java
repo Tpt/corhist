@@ -84,7 +84,7 @@ public class ConstraintViolationCorrectionLookup {
   private Stream<String> findQueries(Constraint constraint) {
     return queryBuilders.stream()
             .filter(queryBuilder -> queryBuilder.canBuildForConstraint(constraint))
-            .flatMap(queryBuilder -> queryBuilder.buildCorrectionsLookupQueries(constraint).stream())
+            .flatMap(queryBuilder -> queryBuilder.buildCorrectionsLookupQueries(constraint, countCurrentInstances(constraint)).stream())
             .map(query -> query + (limit.isPresent() ? " LIMIT " + limit.getAsLong() : ""));
   }
 
