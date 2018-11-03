@@ -118,14 +118,18 @@ public class Main {
               //Save rules
               rules.sort(Comparator.reverseOrder());
               for (ConstraintRule rule : rules) {
-                serializedRulesOutputStream.writeObject(rule.toSimple());
-                rulesTextWriter.write(
-                        rule.getHead().stream().map(Main::toString).collect(Collectors.joining("\t")) + "\t<-\t" +
-                                toString(rule.getViolationBody()) + "\t" +
-                                rule.getContextBody().stream().map(Main::toString).collect(Collectors.joining("\t")) + "\t" +
-                                rule.getStdConfidence() + "\t" +
-                                rule.getSupport() + "\n"
-                );
+                try {
+                  serializedRulesOutputStream.writeObject(rule.toSimple());
+                  rulesTextWriter.write(
+                          rule.getHead().stream().map(Main::toString).collect(Collectors.joining("\t")) + "\t<-\t" +
+                                  toString(rule.getViolationBody()) + "\t" +
+                                  rule.getContextBody().stream().map(Main::toString).collect(Collectors.joining("\t")) + "\t" +
+                                  rule.getStdConfidence() + "\t" +
+                                  rule.getSupport() + "\n"
+                  );
+                } catch (Exception e) {
+                  LOGGER.error(e.getMessage(), e);
+                }
               }
               rulesTextWriter.flush();
             }
