@@ -106,3 +106,13 @@ with open(sys.argv[1], newline='') as csvfile:
           str(evalAdditionBaselineAverage.precision) + " addition baseline average precision, " +
           str(evalAdditionBaselineAverage.recall) + " addition baseline average recall, " +
           str(evalAdditionBaselineAverage.f1) + " addition baseline average F-1.")
+
+    print("Foo & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} \\\\".format(
+        evalWeighted.precision, evalWeighted.recall, evalWeighted.f1,
+        evalAverage.precision, evalAverage.recall, evalAverage.f1))
+    print("Foo & add & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} \\\\".format(
+        evalAdditionBaselineWeighted.precision, evalAdditionBaselineWeighted.recall, evalAdditionBaselineWeighted.f1,
+        evalAdditionBaselineAverage.precision, evalAdditionBaselineAverage.recall, evalAdditionBaselineAverage.f1))
+    print("Foo & deletion & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} & {:.2f} \\\\".format(
+        evalDeletionBaselineWeighted.precision, evalDeletionBaselineWeighted.recall, evalDeletionBaselineWeighted.f1,
+        evalDeletionBaselineAverage.precision, evalDeletionBaselineAverage.recall, evalDeletionBaselineAverage.f1))
