@@ -22,6 +22,7 @@ final class ConstraintCorrectionsGame implements Game {
 
   private final ViolationDatabase violationDatabase;
   private final EditDescriber editDescriber = new EditDescriber();
+  private final ApplicableEditChecker applicableEditChecker = new ApplicableEditChecker();
 
   ConstraintCorrectionsGame(ViolationDatabase violationDatabase) {
     this.violationDatabase = violationDatabase;
@@ -51,6 +52,7 @@ final class ConstraintCorrectionsGame implements Game {
             ? violationDatabase.getRandomViolations(2 * count)
             : violationDatabase.getRandomViolationsForConstraintType(options.get("constraintType"), 2 * count);
     List<Callable<Optional<Tile>>> tileBuilders = corrections.stream()
+            .filter(correction -> applicableEditChecker.isApplicable(correction.getEdit()))
             .map(correction -> (Callable<Optional<Tile>>) () -> buildTile(correction))
             .collect(Collectors.toList());
     try {
