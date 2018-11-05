@@ -19,10 +19,7 @@ import org.wikidata.history.sparql.Vocabulary;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -32,6 +29,7 @@ public class Main {
   private static final double TRAIN_SET_RATIO = 0.8;
   private static final Logger LOGGER = LoggerFactory.getLogger(Main.class);
   private static final Evaluation DEFAULT_EVALUATION = new Evaluation(Float.NaN, Float.NaN, 0);
+  private static final OpenOption[] CREATE_AND_APPEND = new OpenOption[]{StandardOpenOption.APPEND, StandardOpenOption.CREATE};
 
   public static void main(String[] args) throws ParseException, IOException {
     Options options = new Options();
@@ -46,31 +44,35 @@ public class Main {
     OptionalLong limit = limitStr.isEmpty() ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(limitStr));
     String qualifiedFilter = filter + (limit.isPresent() ? "-" + limit.getAsLong() : "");
 
+    Path statsPath = Paths.get("constraint-stats-" + qualifiedFilter + ".tsv");
+    Set<String> alreadyDone = alreadyDoneConstraints(statsPath);
     try (
             HistoryRepository repository = new HistoryRepository(index);
-            BufferedWriter statsWriter = Files.newBufferedWriter(Paths.get("constraint-stats-" + qualifiedFilter + ".tsv"));
-            ObjectOutputStream serializedRulesOutputStream = new ObjectOutputStream(Files.newOutputStream(Paths.get("constraint-rules-" + qualifiedFilter + ".ser")));
-            BufferedWriter rulesTextWriter = Files.newBufferedWriter(Paths.get("constraint-rules-" + qualifiedFilter + ".txt"))
+            BufferedWriter statsWriter = Files.newBufferedWriter(statsPath, CREATE_AND_APPEND);
+            ObjectOutputStream serializedRulesOutputStream = new ObjectOutputStream(Files.newOutputStream(Paths.get("constraint-rules-" + qualifiedFilter + ".ser"), CREATE_AND_APPEND));
+            BufferedWriter rulesTextWriter = Files.newBufferedWriter(Paths.get("constraint-rules-" + qualifiedFilter + ".txt"), CREATE_AND_APPEND)
     ) {
-      statsWriter.append("constraint").append('\t')
-              .append("property").append('\t')
-              .append("property instances").append('\t')
-              .append("current violations").append('\t')
-              .append("corrections with one addition").append('\t')
-              .append("corrections with one deletion").append('\t')
-              .append("corrections with one replacement").append('\t')
-              .append("other corrections").append('\t')
-              .append("mined precision").append('\t')
-              .append("mined recall").append('\t')
-              .append("mined F-1").append('\t')
-              .append("test set size").append('\t')
-              .append("deletion baseline precision").append('\t')
-              .append("deletion baseline recall").append('\t')
-              .append("deletion baseline F-1").append('\t')
-              .append("addition baseline precision").append('\t')
-              .append("addition baseline recall").append('\t')
-              .append("addition baseline F-1")
-              .append('\n');
+      if (alreadyDone.isEmpty()) {
+        statsWriter.append("constraint").append('\t')
+                .append("property").append('\t')
+                .append("property instances").append('\t')
+                .append("current violations").append('\t')
+                .append("corrections with one addition").append('\t')
+                .append("corrections with one deletion").append('\t')
+                .append("corrections with one replacement").append('\t')
+                .append("other corrections").append('\t')
+                .append("mined precision").append('\t')
+                .append("mined recall").append('\t')
+                .append("mined F-1").append('\t')
+                .append("test set size").append('\t')
+                .append("deletion baseline precision").append('\t')
+                .append("deletion baseline recall").append('\t')
+                .append("deletion baseline F-1").append('\t')
+                .append("addition baseline precision").append('\t')
+                .append("addition baseline recall").append('\t')
+                .append("addition baseline F-1")
+                .append('\n');
+      }
 
       //Read constraints
       Collection<Constraint> constraints = new ConstraintsListBuilder().build();
@@ -85,6 +87,9 @@ public class Main {
       }
 
       constraints.stream().parallel().forEach(constraint -> {
+        if (alreadyDone.contains(constraint.getId().stringValue())) {
+          return;
+        }
         try {
           Path correctionsFile = correctionsDir.resolve(constraint.getId().getLocalName());
           TrainAndTestSets sets = Files.exists(correctionsFile)
@@ -198,6 +203,16 @@ public class Main {
     }
 
     return set;
+  }
+
+  private static Set<String> alreadyDoneConstraints(Path statsFile) throws IOException {
+    if (!Files.exists(statsFile)) {
+      return Collections.emptySet();
+    }
+    try (Stream<String> lines = Files.lines(statsFile)) {
+      return lines.skip(1).map(l -> l.split("\t")[0]).collect(Collectors.toSet());
+    }
+
   }
 
   private static Map<Pair<Long, Long>, Long> correctionsPerAdditionsDeletions(Stream<ConstraintViolationCorrection> corrections) {
