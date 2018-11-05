@@ -33,7 +33,7 @@ final class ViolationDatabaseUpdater implements AutoCloseable {
           "  ?statement wikibase:hasViolationForConstraint ?constraint .\n" +
           "  ?constraint ps:P2302 ?constraintType .\n" +
           "  ?entity ?subjectProperty ?statement .\n" +
-          "} LIMIT 100000";
+          "} LIMIT 300000";
 
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final Logger LOGGER = LoggerFactory.getLogger(ViolationDatabaseUpdater.class);
@@ -61,7 +61,7 @@ final class ViolationDatabaseUpdater implements AutoCloseable {
                 .build();
         CLIENT.newCall(request).enqueue(newEditDataCallback);
         try {
-          Thread.sleep(5000); //We avoid to overload the server
+          Thread.sleep(3000); //We avoid to overload the server
         } catch (InterruptedException e) {
           //We don't care much
         }
