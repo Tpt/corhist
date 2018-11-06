@@ -1,4 +1,5 @@
 import csv
+from typing import List
 
 import math
 import sys
@@ -15,16 +16,6 @@ class Eval:
         return (2 * self.precision * self.recall) / (self.precision + self.recall)
 
 
-def weighted_average(v1, p1, v2, p2):
-    if math.isnan(v1):
-        return v2
-    if math.isnan(v2):
-        return v1
-    if p1 + p2 == 0:
-        return 0
-    return (v1 * p1 + v2 * p2) / (p1 + p2)
-
-
 def read_eval(row, prefix, default_precision=math.nan, default_recall=math.nan):
     return Eval(
         row[prefix + ' precision'] if prefix + ' precision' in row else default_precision,
@@ -33,19 +24,25 @@ def read_eval(row, prefix, default_precision=math.nan, default_recall=math.nan):
     )
 
 
-def weighted_combination(e1: Eval, e2: Eval):
+def weighted_combination(es: List[Eval]):
+    filtered_prec = [e for e in es if not math.isnan(e.precision)]
+    filtered_rec = [e for e in es if not math.isnan(e.recall)]
     return Eval(
-        weighted_average(e1.precision, e1.count, e2.precision, e2.count),
-        weighted_average(e1.recall, e1.count, e2.recall, e2.count),
-        e1.count + e2.count
+        sum(e.precision * e.count for e in filtered_prec) / sum(e.count for e in filtered_prec)
+        if filtered_prec else math.nan,
+        sum(e.recall * e.count for e in filtered_rec) / sum(e.count for e in filtered_rec)
+        if filtered_rec else math.nan,
+        sum(e.count for e in es)
     )
 
 
-def average_combination(e1: Eval, e2: Eval):
+def average_combination(es: List[Eval]):
+    filtered_prec = [e for e in es if not math.isnan(e.precision)]
+    filtered_rec = [e for e in es if not math.isnan(e.recall)]
     return Eval(
-        weighted_average(e1.precision, 1, e2.precision, 1),
-        weighted_average(e1.recall, 1, e2.recall, 1),
-        e1.count + e2.count
+        sum(e.precision for e in filtered_prec) / len(filtered_prec) if filtered_prec else math.nan,
+        sum(e.recall for e in filtered_rec) / len(filtered_rec) if filtered_rec else math.nan,
+        len(es)
     )
 
 
@@ -57,12 +54,9 @@ with open(sys.argv[1], newline='') as csvfile:
     correctedViolationsAdd = 0
     correctedViolationsDel = 0
     correctedViolationsReplace = 0
-    evalWeighted = Eval(math.nan, math.nan, 0)
-    evalAverage = Eval(math.nan, math.nan, 0)
-    evalDeletionBaselineWeighted = Eval(math.nan, math.nan, 0)
-    evalDeletionBaselineAverage = Eval(math.nan, math.nan, 0)
-    evalAdditionBaselineWeighted = Eval(math.nan, math.nan, 0)
-    evalAdditionBaselineAverage = Eval(math.nan, math.nan, 0)
+    eval = []
+    evalDeletionBaseline = []
+    evalAdditionBaseline = []
     for row in reader:
         constraintsCount += 1
         currentInstancesCount += int(row['property instances'])
@@ -70,16 +64,16 @@ with open(sys.argv[1], newline='') as csvfile:
         correctedViolationsAdd += int(row['corrections with one addition'])
         correctedViolationsDel += int(row['corrections with one deletion'])
         correctedViolationsReplace += int(row['corrections with one replacement'])
-        evalWeighted = weighted_combination(evalWeighted, read_eval(row, 'mined'))
-        evalAverage = average_combination(evalAverage, read_eval(row, 'mined'))
-        evalDeletionBaselineWeighted = weighted_combination(evalDeletionBaselineWeighted,
-                                                            read_eval(row, 'deletion baseline'))
-        evalDeletionBaselineAverage = average_combination(evalDeletionBaselineAverage,
-                                                          read_eval(row, 'deletion baseline'))
-        evalAdditionBaselineWeighted = weighted_combination(evalAdditionBaselineWeighted,
-                                                            read_eval(row, 'addition baseline'))
-        evalAdditionBaselineAverage = average_combination(evalAdditionBaselineAverage,
-                                                          read_eval(row, 'addition baseline'))
+        eval.append(read_eval(row, 'mined'))
+        evalDeletionBaseline.append(read_eval(row, 'deletion baseline'))
+        evalAdditionBaseline.append(read_eval(row, 'addition baseline'))
+
+    evalWeighted = weighted_combination(eval)
+    evalAverage = average_combination(eval)
+    evalDeletionBaselineWeighted = weighted_combination(evalDeletionBaseline)
+    evalDeletionBaselineAverage = average_combination(evalDeletionBaseline)
+    evalAdditionBaselineWeighted = weighted_combination(evalAdditionBaseline)
+    evalAdditionBaselineAverage = average_combination(evalAdditionBaseline)
 
     print("Aggregated stats: " +
           str(constraintsCount) + " constraints, " +
