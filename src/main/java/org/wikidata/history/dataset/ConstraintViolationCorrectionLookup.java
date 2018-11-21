@@ -7,6 +7,8 @@ import org.eclipse.rdf4j.query.BindingSet;
 import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.wikidata.history.IterableTupleQuery;
 import org.wikidata.history.dataset.queries.*;
 import org.wikidata.history.sparql.Vocabulary;
@@ -17,6 +19,7 @@ import java.util.stream.Stream;
 
 public class ConstraintViolationCorrectionLookup {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(ConstraintViolationCorrectionLookup.class);
   private static final Map<String, QueriesForConstraintCorrectionsBuilder> SPARQL_BUILDERS = new HashMap<>();
 
   static {
@@ -84,7 +87,14 @@ public class ConstraintViolationCorrectionLookup {
   private Stream<String> findQueries(Constraint constraint) {
     return queryBuilders.stream()
             .filter(queryBuilder -> queryBuilder.canBuildForConstraint(constraint))
-            .flatMap(queryBuilder -> queryBuilder.buildCorrectionsLookupQueries(constraint, countCurrentInstances(constraint)).stream())
+            .flatMap(queryBuilder -> {
+              try {
+                return queryBuilder.buildCorrectionsLookupQueries(constraint, countCurrentInstances(constraint)).stream();
+              } catch (IllegalArgumentException e) {
+                LOGGER.error(e.getMessage(), e);
+                return Stream.empty();
+              }
+            })
             .map(query -> query + (limit.isPresent() ? " LIMIT " + limit.getAsLong() : ""));
   }
 

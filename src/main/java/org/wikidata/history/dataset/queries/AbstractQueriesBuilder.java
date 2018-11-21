@@ -2,33 +2,27 @@ package org.wikidata.history.dataset.queries;
 
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.wikidata.history.dataset.Constraint;
 import org.wikidata.history.dataset.QueriesForConstraintCorrectionsBuilder;
 import org.wikidata.history.sparql.Vocabulary;
 
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 abstract class AbstractQueriesBuilder implements QueriesForConstraintCorrectionsBuilder {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractQueriesBuilder.class);
-
   String convertRelationParameter(Constraint constraint) {
-    return "(" + constraint.getParameters(RELATION_PARAMETER).stream().flatMap(relation -> {
-      if (relation.equals(INSTANCEOF_ENTITY)) {
-        return Stream.of(INSTANCEOF_PROPERTY);
-      } else if (relation.equals(SUBCLASSOF_ENTITY)) {
-        return Stream.of(SUBCLASSOF_PROPERTY);
-      } else if (relation.equals(INSTANCE_OR_SUBCLASS_OF_PROPERTY)) {
-        return Stream.of(INSTANCEOF_PROPERTY, SUBCLASSOF_PROPERTY);
-      } else {
-        LOGGER.error("Not supported relation: " + relation);
-        return Stream.of(NOT_EXISTING_PROPERTY);
-      }
-    }).distinct().map(p -> "<" + Vocabulary.toDirectProperty(p) + ">").collect(Collectors.joining("|")) + ")";
+    Value relation = constraint.getParameter(RELATION_PARAMETER)
+            .orElseThrow(() -> new IllegalArgumentException("Found no value for relation parameter"));
+    if (relation.equals(INSTANCEOF_ENTITY)) {
+      return "<" + Vocabulary.toDirectProperty(INSTANCEOF_PROPERTY) + ">";
+    } else if (relation.equals(SUBCLASSOF_ENTITY)) {
+      return "<" + Vocabulary.toDirectProperty(SUBCLASSOF_PROPERTY) + ">";
+    } else if (relation.equals(INSTANCE_OR_SUBCLASS_OF_PROPERTY)) {
+      return "(<" + Vocabulary.toDirectProperty(INSTANCEOF_PROPERTY) + ">|<" + Vocabulary.toDirectProperty(SUBCLASSOF_PROPERTY) + ">)";
+    } else {
+      throw new IllegalArgumentException("Not supported relation: " + relation);
+    }
   }
 
   String convertClassParameter(Constraint constraint, String variableName) {
