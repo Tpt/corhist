@@ -130,7 +130,7 @@ class MapDBStore implements AutoCloseable {
       DBException.VolumeIOError error = null;
       for (int i = 0; i < 8; i++) {
         try {
-          return MappedFileVol.FACTORY.makeVolume(file.toString(), false, 0, Index.PAGE_SHIFT, 0, false);
+          return MappedFileVol.FACTORY.makeVolume(file.toAbsolutePath().toString(), false, 0, Index.PAGE_SHIFT, 0, false);
         } catch (DBException.VolumeIOError e) {
           error = e;
         }
@@ -153,8 +153,20 @@ class MapDBStore implements AutoCloseable {
     private SortedTableMap<K, V> map;
 
     private IndexReader(Path file, GroupSerializer<K> keySerializer, GroupSerializer<V> valueSerializer) {
-      Volume volume = MappedFileVol.FACTORY.makeVolume(file.toAbsolutePath().toString(), true, 0, Index.PAGE_SHIFT, 0, false);
+      Volume volume = openVolume(file);
       map = SortedTableMap.open(volume, keySerializer, valueSerializer);
+    }
+
+    private Volume openVolume(Path file) {
+      DBException.VolumeIOError error = null;
+      for (int i = 0; i < 8; i++) {
+        try {
+          return MappedFileVol.FACTORY.makeVolume(file.toAbsolutePath().toString(), true, 0, Index.PAGE_SHIFT, 0, false);
+        } catch (DBException.VolumeIOError e) {
+          error = e;
+        }
+      }
+      throw error;
     }
 
     @Override
