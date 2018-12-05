@@ -90,16 +90,17 @@ public class Main {
         if (alreadyDone.contains(constraint.getId().stringValue())) {
           return;
         }
+        long currentInstancesCount = constraintViolationCorrectionLookup.countCurrentInstances(constraint);
+        if (currentInstancesCount == 0) {
+          return; //Filtered out constraint
+        }
+
         try {
           Path correctionsFile = correctionsDir.resolve(constraint.getId().getLocalName());
           TrainAndTestSets sets = Files.exists(correctionsFile)
                   ? readCorrectionsFile(correctionsFile, repository.getValueFactory(), constraint)
                   : findAndSaveCorrections(correctionsFile, constraintViolationCorrectionLookup, constraint);
-          if (sets.isEmpty()) {
-            return;
-          }
 
-          long currentInstancesCount = constraintViolationCorrectionLookup.countCurrentInstances(constraint);
           long currentViolationsCount = constraintViolationCorrectionLookup.countCurrentViolations(constraint);
           Map<Pair<Long, Long>, Long> correctedViolations = correctionsPerAdditionsDeletions(sets.stream());
           long oneAddition = correctedViolations.getOrDefault(Pair.of(1L, 0L), 0L);
