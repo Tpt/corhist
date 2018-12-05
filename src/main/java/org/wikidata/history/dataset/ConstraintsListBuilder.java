@@ -13,7 +13,8 @@ public class ConstraintsListBuilder {
   private static final String QUERY = "SELECT DISTINCT ?constraint ?property ?type ?qualifierProp ?qualifierValue WHERE {"
           + " ?property a wikibase:Property . "
           + " ?property p:P2302 ?constraint . "
-          + " ?constraint ps:P2302 ?type. "
+          + " ?constraint ps:P2302 ?type . "
+          + " ?constraint a wikibase:BestRank . "
           + " OPTIONAL { ?constraint ?qualifierRel ?qualifierValue . ?qualifierProp wikibase:qualifier ?qualifierRel. }"
           + "}";
 
