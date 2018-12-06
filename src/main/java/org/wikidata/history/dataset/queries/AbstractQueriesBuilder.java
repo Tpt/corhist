@@ -2,6 +2,8 @@ package org.wikidata.history.dataset.queries;
 
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.wikidata.history.dataset.Constraint;
 import org.wikidata.history.dataset.QueriesForConstraintCorrectionsBuilder;
 import org.wikidata.history.sparql.Vocabulary;
@@ -11,9 +13,14 @@ import java.util.stream.Collectors;
 
 abstract class AbstractQueriesBuilder implements QueriesForConstraintCorrectionsBuilder {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(AbstractQueriesBuilder.class);
+
   String convertRelationParameter(Constraint constraint) {
     Value relation = constraint.getParameter(RELATION_PARAMETER)
-            .orElseThrow(() -> new IllegalArgumentException("Found no value for relation parameter"));
+            .orElseGet(() -> {
+              LOGGER.warn("Found no value for relation parameter, assuming instance of, for constraint " + constraint.getId());
+              return INSTANCEOF_ENTITY;
+            });
     if (relation.equals(INSTANCEOF_ENTITY)) {
       return "<" + Vocabulary.toDirectProperty(INSTANCEOF_PROPERTY) + ">";
     } else if (relation.equals(SUBCLASSOF_ENTITY)) {
@@ -21,7 +28,7 @@ abstract class AbstractQueriesBuilder implements QueriesForConstraintCorrections
     } else if (relation.equals(INSTANCE_OR_SUBCLASS_OF_PROPERTY)) {
       return "(<" + Vocabulary.toDirectProperty(INSTANCEOF_PROPERTY) + ">|<" + Vocabulary.toDirectProperty(SUBCLASSOF_PROPERTY) + ">)";
     } else {
-      throw new IllegalArgumentException("Not supported relation: " + relation);
+      throw new IllegalArgumentException("Not supported relation: " + relation + " in constraint " + constraint.getId());
     }
   }
 
