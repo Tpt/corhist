@@ -1,0 +1,4 @@
+[submodule "wikidata-sparql-history"]
+	path = wikidata-sparql-history
+	url = git@github.com:Tpt/wikidata-sparql-history.git
+	branch = master
