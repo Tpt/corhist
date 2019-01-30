@@ -2,14 +2,10 @@ package org.wikidata.history.corhist.dataset;
 
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
 public final class Constraint {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(Constraint.class);
 
   private IRI id;
   private IRI property;
