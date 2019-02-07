@@ -1,7 +1,7 @@
 CorHist
 =======
 
-CorHist means *cor*ections from *hist*ory and is an experimental tool that learns corrections for Wikidata contraints violations from Wikidata edit history.
+CorHist means *cor*rections from *hist*ory and is an experimental tool that learns corrections for Wikidata contraints violations from Wikidata edit history.
 It is currently a work in progress.
 
 ## License
