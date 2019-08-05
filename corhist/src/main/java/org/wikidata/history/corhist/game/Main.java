@@ -3,8 +3,9 @@ package org.wikidata.history.corhist.game;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Sets;
-import io.javalin.Context;
 import io.javalin.Javalin;
+import io.javalin.core.JavalinConfig;
+import io.javalin.http.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,8 +40,7 @@ public class Main {
     //Runtime.getRuntime().addShutdownHook(new Thread(violationDatabaseUpdater::close));
 
     Game game = new ConstraintCorrectionsGame(violationDatabase);
-    Javalin.create()
-            .enableCorsForOrigin("*")
+    Javalin.create(JavalinConfig::enableCorsForAllOrigins)
             .get("/corhist/dgame", ctx -> {
               String action = ctx.queryParam("action");
               if ("desc".equals(action)) {
