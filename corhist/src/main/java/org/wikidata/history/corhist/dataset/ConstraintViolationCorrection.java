@@ -13,10 +13,10 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public final class ConstraintViolationCorrection {
-  private Constraint constraint;
-  private Statement targetTriple;
-  private Set<Statement> correction;
-  private IRI correctionRevision;
+  private final Constraint constraint;
+  private final Statement targetTriple;
+  private final Set<Statement> correction;
+  private final IRI correctionRevision;
 
   ConstraintViolationCorrection(Constraint constraint, Statement targetTriple, Set<Statement> correction, IRI correctionRevision) {
     this.constraint = constraint;
