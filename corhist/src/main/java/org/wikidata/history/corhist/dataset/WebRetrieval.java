@@ -1,27 +1,25 @@
 package org.wikidata.history.corhist.dataset;
 
+import okhttp3.*;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.Serializer;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Path;
-import java.time.Duration;
+import java.util.Arrays;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public class WebRetrieval implements AutoCloseable {
 
   private static final String USER_AGENT = "CorHistBot/0.1 (ttanon@enst.fr)";
-  private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
-  private final HttpClient httpClient;
+  private final OkHttpClient httpClient;
   private final DB db;
   private final Map<String, Integer> pageStatusCodeCache;
   private final Map<String, String> pageContentCache;
@@ -29,12 +27,17 @@ public class WebRetrieval implements AutoCloseable {
 
 
   public WebRetrieval(Path cachePath) {
-    httpClient = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .connectTimeout(TIMEOUT)
+    httpClient = new OkHttpClient.Builder()
+            .connectTimeout(1, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .writeTimeout(1, TimeUnit.SECONDS)
+            .connectionSpecs(Arrays.asList(ConnectionSpec.COMPATIBLE_TLS, ConnectionSpec.CLEARTEXT))
+            .retryOnConnectionFailure(false)
+            .followRedirects(true)
+            .followSslRedirects(true)
             .build();
 
-    db = DBMaker.fileDB(cachePath.toFile()).fileMmapEnable().cleanerHackEnable().make();
+    db = DBMaker.fileDB(cachePath.toFile()).fileMmapEnable().cleanerHackEnable().checksumHeaderBypass().make();
     pageStatusCodeCache = db.hashMap("page-status-code", Serializer.STRING, Serializer.INTEGER).createOrOpen();
     pageContentCache = db.hashMap("page-content", Serializer.STRING, Serializer.STRING).createOrOpen();
     redirectCache = db.hashMap("redirect", Serializer.STRING, Serializer.STRING).createOrOpen();
@@ -47,7 +50,7 @@ public class WebRetrieval implements AutoCloseable {
     db.close();
   }
 
-  public CompletableFuture<WebPage> getWebPage(String url) throws URISyntaxException {
+  public WebPage getWebPage(String url) throws URISyntaxException, IOException {
     URI uri = parseURI(url);
     URI location = getFinalLocation(uri);
     Integer pageStatusCode = pageStatusCodeCache.get(location.toString());
@@ -55,16 +58,15 @@ public class WebRetrieval implements AutoCloseable {
     if (pageStatusCode == null || pageContent == null) {
       //TODO
       //return CompletableFuture.failedFuture(new Exception("skipped"));
-      return fetchWebPage(location).thenApply(webPage -> {
-        if (!uri.equals(webPage.getLocation())) {
-          redirectCache.put(uri.toString(), webPage.getLocation().toString());
-        }
-        pageStatusCodeCache.put(webPage.getLocation().toString(), webPage.getStatusCode());
-        pageContentCache.put(webPage.getLocation().toString(), webPage.getContent());
-        return webPage;
-      });
+      WebPage webPage = fetchWebPage(HttpUrl.get(location));
+      if (!uri.equals(webPage.getLocation())) {
+        redirectCache.put(uri.toString(), webPage.getLocation().toString());
+      }
+      pageStatusCodeCache.put(webPage.getLocation().toString(), webPage.getStatusCode());
+      pageContentCache.put(webPage.getLocation().toString(), webPage.getContent());
+      return webPage;
     } else {
-      return CompletableFuture.completedFuture(new WebPage(location, pageStatusCode, pageContent));
+      return new WebPage(location, pageStatusCode, pageContent);
     }
   }
 
@@ -84,22 +86,25 @@ public class WebRetrieval implements AutoCloseable {
     return uri;
   }
 
-  private CompletableFuture<WebPage> fetchWebPage(URI uri) {
+  private WebPage fetchWebPage(HttpUrl uri) throws IOException {
     //TODO: follow rel="canonical"
-    return httpClient.sendAsync(buildFetchRequest(uri), HttpResponse.BodyHandlers.ofString())
-            .thenApply(response -> {
-              Document document = Jsoup.parse(response.body(), response.uri().toString()).normalise();
-              document.charset();
-              return new WebPage(response.uri(), response.statusCode(), document.toString());
-            });
+    try (Response response = httpClient.newCall(buildFetchRequest(uri)).execute()) {
+      MediaType mediaType = MediaType.get(response.header("Content-Type", "text/html"));
+      if (!mediaType.subtype().equalsIgnoreCase("html") && !mediaType.subtype().equalsIgnoreCase("html+xml")) {
+        throw new IOException("Unsupported Content-Type: " + response.header("Content-Type"));
+      }
+      Document document = Jsoup.parse(response.body().string(), response.request().url().toString()).normalise();
+      return new WebPage(response.request().url().uri(), response.code(), document.toString());
+    } catch (RuntimeException e) {
+      throw new IOException(e);
+    }
   }
 
-  private HttpRequest buildFetchRequest(URI uri) {
-    return HttpRequest.newBuilder(uri)
-            .GET()
-            .setHeader("User-Agent", USER_AGENT)
-            .setHeader("Accept", "text/html")
-            .timeout(TIMEOUT)
+  private Request buildFetchRequest(HttpUrl uri) {
+    return new Request.Builder()
+            .url(uri)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "text/html")
             .build();
   }
 

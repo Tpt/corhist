@@ -2,25 +2,24 @@ package org.wikidata.history.corhist.mining;
 
 import org.apache.commons.cli.*;
 import org.eclipse.rdf4j.model.IRI;
-import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
-import org.eclipse.rdf4j.rio.ntriples.NTriplesUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wikidata.history.corhist.dataset.Constraint;
 import org.wikidata.history.corhist.dataset.ConstraintViolationCorrectionWithContext;
-import org.wikidata.history.corhist.dataset.QueriesForConstraintCorrectionsBuilder;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
@@ -36,7 +35,7 @@ public class MainMineFromContext {
     CommandLineParser parser = new DefaultParser();
     CommandLine line = parser.parse(options, args);
 
-    Map<IRI, Constraint> constraints = constraints(Paths.get(line.getOptionValue("constraints")));
+    Map<IRI, Constraint> constraints = Constraint.read(Paths.get(line.getOptionValue("constraints")), VALUE_FACTORY);
     Map<IRI, TrainSets> setsByConstraint = setsByConstraint(
             Paths.get(line.getOptionValue("file") + ".full.train.tsv.gz"),
             Paths.get(line.getOptionValue("file") + ".full.dev.tsv.gz"),
@@ -46,8 +45,10 @@ public class MainMineFromContext {
     );
 
     Path statsPath = Paths.get(line.getOptionValue("file") + ".stats.tsv");
+    Path rulesPath = Paths.get(line.getOptionValue("file") + ".rules.txt");
     try (
-            BufferedWriter statsWriter = Files.newBufferedWriter(statsPath)
+            BufferedWriter statsWriter = Files.newBufferedWriter(statsPath);
+            BufferedWriter rulesWriter = Files.newBufferedWriter(rulesPath)
     ) {
       statsWriter.append("constraint").append('\t')
               .append("property").append('\t')
@@ -75,13 +76,37 @@ public class MainMineFromContext {
 
         //Mining and its evaluation
         Evaluation evaluation = DEFAULT_EVALUATION;
-        if (!sets.trainSet.isEmpty() && !sets.testSet.isEmpty()) {
+        if (!sets.trainSet.isEmpty()) {
           MinerFromContext miner = new MinerFromContext();
           EvaluatorWithContext evaluator = new EvaluatorWithContext();
           TuningMinerFromContext tuningMiner = new TuningMinerFromContext(miner, evaluator);
 
           List<ConstraintRuleWithContext> rules = tuningMiner.mine(sets.trainSet, sets.devSet);
-          evaluation = evaluator.evaluate(rules, sets.testSet);
+
+          if (!sets.testSet.isEmpty()) {
+            evaluation = evaluator.evaluate(rules, sets.testSet);
+          }
+
+          try {
+            synchronized (rulesWriter) {
+              for (ConstraintRuleWithContext rule : rules) {
+                rulesWriter
+                        .append(rule.getHead().stream().map(Main::toString).collect(Collectors.joining("\t")))
+                        .append("\t<-\t")
+                        .append(Main.toString(rule.getViolationBody()))
+                        .append("\t")
+                        .append(rule.getContextBody().stream().map(Main::toString).collect(Collectors.joining("\t")))
+                        .append("\t")
+                        .append(String.valueOf(rule.getStdConfidence()))
+                        .append("\t")
+                        .append(String.valueOf(rule.getSupport()))
+                        .append("\n");
+                statsWriter.flush();
+              }
+            }
+          } catch (IOException e) {
+            LOGGER.error(e.getMessage(), e);
+          }
         }
 
         try {
@@ -108,39 +133,6 @@ public class MainMineFromContext {
     }
   }
 
-  private static final IRI[] PARAMETERS = new IRI[]{
-          null, // id
-          null, // property
-          null, // type
-          QueriesForConstraintCorrectionsBuilder.REGEX_PARAMETER,
-          null,
-          null,
-          QueriesForConstraintCorrectionsBuilder.ITEM_PARAMETER,
-          QueriesForConstraintCorrectionsBuilder.PROPERTY_PARAMETER,
-          null,
-          QueriesForConstraintCorrectionsBuilder.CLASS_PARAMETER,
-          QueriesForConstraintCorrectionsBuilder.RELATION_PARAMETER
-  };
-
-  private static Map<IRI, Constraint> constraints(Path file) throws IOException {
-    return Files.newBufferedReader(file, StandardCharsets.UTF_8).lines().skip(1).map(l -> {
-      String[] parts = l.split("\t");
-      Map<IRI, List<Value>> parameters = new HashMap<>();
-      for (int i = 0; i < PARAMETERS.length; i++) {
-        if (PARAMETERS[i] != null && parts.length > i) {
-          String value = parts[i].trim();
-          if (!value.isEmpty()) {
-            List<Value> values = value.startsWith("\"")
-                    ? Collections.singletonList(NTriplesUtil.parseValue(value, VALUE_FACTORY))
-                    : Arrays.stream(value.split(" ")).map(v -> NTriplesUtil.parseValue(v, VALUE_FACTORY)).collect(Collectors.toList());
-            parameters.put(PARAMETERS[i], values);
-          }
-        }
-      }
-      return new Constraint(NTriplesUtil.parseURI(parts[0], VALUE_FACTORY), NTriplesUtil.parseURI(parts[1], VALUE_FACTORY), NTriplesUtil.parseURI(parts[2], VALUE_FACTORY), parameters);
-    }).collect(Collectors.toMap(Constraint::getId, c -> c));
-  }
-
   private static Map<IRI, TrainSets> setsByConstraint(Path trainFile, Path devFile, Path testFile, long limit, Map<IRI, Constraint> constraints) throws IOException {
     Map<IRI, TrainSets> sets = new HashMap<>();
     newReader(trainFile)
@@ -149,9 +141,11 @@ public class MainMineFromContext {
             .forEach(l -> {
               try {
                 ConstraintViolationCorrectionWithContext corr = ConstraintViolationCorrectionWithContext.read(l, VALUE_FACTORY, constraints);
-                sets.computeIfAbsent(corr.getCorrection().getConstraint().getId(), c -> new TrainSets()).trainSet.add(corr);
+                if (corr != null) {
+                  sets.computeIfAbsent(corr.getCorrection().getConstraint().getId(), c -> new TrainSets()).trainSet.add(corr);
+                }
               } catch (IllegalArgumentException e) {
-                //LOGGER.warn("Invalid line: " + l, e);
+                LOGGER.warn("Invalid line: " + l, e);
               }
             });
     newReader(devFile)
@@ -160,9 +154,11 @@ public class MainMineFromContext {
             .forEach(l -> {
               try {
                 ConstraintViolationCorrectionWithContext corr = ConstraintViolationCorrectionWithContext.read(l, VALUE_FACTORY, constraints);
-                sets.computeIfAbsent(corr.getCorrection().getConstraint().getId(), c -> new TrainSets()).devSet.add(corr);
+                if (corr != null) {
+                  sets.computeIfAbsent(corr.getCorrection().getConstraint().getId(), c -> new TrainSets()).devSet.add(corr);
+                }
               } catch (IllegalArgumentException e) {
-                //LOGGER.warn("Invalid line: " + l, e);
+                LOGGER.warn("Invalid line: " + l, e);
               }
             });
     newReader(testFile)
@@ -171,9 +167,11 @@ public class MainMineFromContext {
             .forEach(l -> {
               try {
                 ConstraintViolationCorrectionWithContext corr = ConstraintViolationCorrectionWithContext.read(l, VALUE_FACTORY, constraints);
-                sets.computeIfAbsent(corr.getCorrection().getConstraint().getId(), c -> new TrainSets()).testSet.add(corr);
+                if (corr != null) {
+                  sets.computeIfAbsent(corr.getCorrection().getConstraint().getId(), c -> new TrainSets()).testSet.add(corr);
+                }
               } catch (IllegalArgumentException e) {
-                //LOGGER.warn("Invalid line: " + l, e);
+                LOGGER.warn("Invalid line: " + l, e);
               }
             });
     return sets;

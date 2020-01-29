@@ -13,8 +13,7 @@ import org.eclipse.rdf4j.rio.ntriples.NTriplesUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wikidata.history.corhist.WikidataSPARQLEndpoint;
-import org.wikidata.history.corhist.dataset.EntityDescription;
-import org.wikidata.history.corhist.dataset.WebRetrieval;
+import org.wikidata.history.corhist.dataset.*;
 import org.wikidata.history.sparql.HistoryRepository;
 import org.wikidata.history.sparql.Vocabulary;
 
@@ -26,16 +25,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 public class MainAddContext {
+  private static final int LIMIT = 200000;
   private static final Logger LOGGER = LoggerFactory.getLogger(MainAddContext.class);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final Map<String, String> URL_FORMATTERS = MainAddContext.fetchUrlFormatters();
@@ -45,7 +41,8 @@ public class MainAddContext {
     Options options = new Options();
     options.addRequiredOption("f", "file", true, "Constraint file");
     options.addRequiredOption("i", "index", true, "History index");
-    options.addRequiredOption("c", "webCache", true, "Web pages cache");
+    options.addRequiredOption("wc", "webCache", true, "Web pages cache");
+    options.addRequiredOption("c", "constraints", true, "Constraints file to target");
     CommandLineParser parser = new DefaultParser();
     CommandLine params = parser.parse(options, args);
 
@@ -55,8 +52,6 @@ public class MainAddContext {
     }
     LOGGER.info("Lines loaded: " + lines.size());
 
-    Collections.shuffle(lines); // In order to avoid doing the HTTP queries site per site
-
     try (
             WebRetrieval webRetrieval = new WebRetrieval(Paths.get(params.getOptionValue("webCache")));
             HistoryRepository repository = new HistoryRepository(Paths.get(params.getOptionValue("index")));
@@ -65,51 +60,144 @@ public class MainAddContext {
             BufferedWriter devOut = newWriter(Paths.get(params.getOptionValue("file") + ".full.dev.tsv.gz"));
             BufferedWriter testOut = newWriter(Paths.get(params.getOptionValue("file") + ".full.test.tsv.gz"))
     ) {
-      lines.parallelStream().map(line -> {
-        ValueFactory valueFactory = connection.getValueFactory();
+      ValueFactory valueFactory = connection.getValueFactory();
+      Map<IRI, Constraint> constraints = Constraint.read(Paths.get(params.getOptionValue("constraints")), valueFactory);
+
+      int count = 0;
+      for (String line : lines) {
         String[] parts = line.split("\t");
+        IRI constraint = NTriplesUtil.parseURI(parts[0], valueFactory);
         IRI context = NTriplesUtil.parseURI(parts[1], valueFactory);
         IRI subject = NTriplesUtil.parseURI(parts[2], valueFactory);
         IRI predicate = NTriplesUtil.parseURI(parts[3], valueFactory);
         Value object = NTriplesUtil.parseValue(parts[4], valueFactory);
-        String subjectDesc = entityDescription(connection, subject, context);
-        CompletableFuture<String> objectDescFuture;
-        if (URL_FORMATTERS.containsKey(predicate.stringValue()) && !(object instanceof BNode)) {
-          String pattern = URL_FORMATTERS.get(predicate.stringValue());
-          String url = pattern.equals("$1")
-                  ? object.stringValue()
-                  : pattern.replace("$1", wikiUrlEncode(object.stringValue()));
-          objectDescFuture = pageDescription(webRetrieval, url);
-        } else if (object instanceof IRI) {
-          objectDescFuture = CompletableFuture.completedFuture(entityDescription(connection, (IRI) object, context));
-        } else {
-          objectDescFuture = CompletableFuture.completedFuture("");
-        }
-        return objectDescFuture.thenApply((objectDesc) -> Stream.concat(
-                Arrays.stream(parts),
-                Stream.of(subjectDesc, objectDesc)
-        ).collect(Collectors.joining("\t")));
-      }).forEachOrdered(line -> {
-        double rand = Math.random();
-        Writer writer;
-        if (rand < 0.8) {
-          writer = trainOut;
-        } else if (rand < 0.9) {
-          writer = devOut;
-        } else {
-          writer = testOut;
-        }
+        String objectDesc = objectDescription(connection, webRetrieval, object, predicate, context);
+        List<Statement> otherTriples = Collections.emptyList();
         try {
-          writer.write(line.get(10, TimeUnit.SECONDS));
-          writer.append('\n');
-        } catch (IOException | InterruptedException e) {
-          throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-          LOGGER.warn("Error while getting an URL: " + e.getCause().getMessage());
-        } catch (TimeoutException e) {
-          LOGGER.warn("Timeout while getting an URL");
+          otherTriples = otherTriples(constraint, subject, predicate, object, context, constraints, connection);
+        } catch (QueryEvaluationException e) {
+          LOGGER.warn(e.getMessage(), e);
         }
-      });
+        String subjectDesc = entityDescription(connection, subject, context);
+
+        if (otherTriples.isEmpty()) {
+          write(Stream.concat(
+                  Stream.concat(
+                          Arrays.stream(parts).limit(5),
+                          Stream.of("", "", "")
+                  ),
+                  Stream.concat(
+                          Arrays.stream(parts).skip(5),
+                          Stream.of(subjectDesc, objectDesc, "")
+                  )
+          ).collect(Collectors.joining("\t")), trainOut, devOut, testOut);
+        } else {
+          for (Statement otherTriple : otherTriples) {
+            String otherDesc = (!subject.equals(otherTriple.getSubject()) && !object.equals(otherTriple.getSubject()))
+                    ? entityDescription(connection, (IRI) otherTriple.getSubject(), context)
+                    : objectDescription(connection, webRetrieval, otherTriple.getObject(), otherTriple.getPredicate(), context);
+
+            write(Stream.concat(
+                    Stream.concat(
+                            Arrays.stream(parts).limit(5),
+                            Stream.of(otherTriple.getSubject(), otherTriple.getPredicate(), otherTriple.getObject()).map(NTriplesUtil::toNTriplesString)
+                    ),
+                    Stream.concat(
+                            Arrays.stream(parts).skip(5),
+                            Stream.of(subjectDesc, objectDesc, otherDesc)
+                    )
+            ).collect(Collectors.joining("\t")), trainOut, devOut, testOut);
+          }
+        }
+        count += 1;
+        if (count > LIMIT) {
+          return; // We stop here
+        }
+      }
+    }
+  }
+
+  private static void write(String line, BufferedWriter trainOut, BufferedWriter devOut, BufferedWriter testOut) {
+    double rand = Math.random();
+    Writer writer;
+    if (rand < 0.8) {
+      writer = trainOut;
+    } else if (rand < 0.9) {
+      writer = devOut;
+    } else {
+      writer = testOut;
+    }
+    try {
+      writer.write(line);
+      writer.append('\n');
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static List<Statement> otherTriples(IRI constraintId, Resource subject, IRI predicate, Value object, IRI context, Map<IRI, Constraint> constraints, RepositoryConnection connection) {
+    context = Vocabulary.toGlobalState(Vocabulary.previousRevision(context));
+
+    Constraint constraint = constraints.get(constraintId);
+    if (constraint == null) {
+      return Collections.emptyList();
+    }
+
+    RepositoryResult<Statement> results;
+    List<Statement> conflicts = new ArrayList<>();
+    switch (constraint.getType().toString()) {
+      case "http://www.wikidata.org/entity/Q21502838": // conflict with
+        List<Value> propertiesInConflict = constraint.getParameters(QueriesForConstraintCorrectionsBuilder.PROPERTY_PARAMETER);
+        if (propertiesInConflict.size() != 1) {
+          LOGGER.warn("Invalid constraint: " + constraint.getId());
+          break;
+        }
+        IRI propertyInConflict = Vocabulary.toDirectProperty((IRI) propertiesInConflict.get(0));
+        Set<Value> values = new HashSet<>(constraint.getParameters(QueriesForConstraintCorrectionsBuilder.ITEM_PARAMETER));
+        results = connection.getStatements(subject, propertyInConflict, null, context);
+        results.enableDuplicateFilter();
+        while (results.hasNext()) {
+          Statement result = results.next();
+          if (values.isEmpty() || values.contains(result.getObject())) {
+            conflicts.add(result);
+          }
+        }
+        break;
+      case "http://www.wikidata.org/entity/Q19474404": // single
+        results = connection.getStatements(subject, predicate, null, context);
+        results.enableDuplicateFilter();
+        while (results.hasNext()) {
+          Statement result = results.next();
+          if (!object.equals(result.getObject())) {
+            conflicts.add(result);
+          }
+        }
+        break;
+      case "http://www.wikidata.org/entity/Q21502410": // unique
+        results = connection.getStatements(null, predicate, object, context);
+        results.enableDuplicateFilter();
+        while (results.hasNext()) {
+          Statement result = results.next();
+          if (!subject.equals(result.getSubject())) {
+            conflicts.add(result);
+          }
+        }
+        break;
+    }
+    return conflicts;
+  }
+
+  private static String objectDescription(RepositoryConnection connection, WebRetrieval webRetrieval, Value object, IRI predicate, IRI context) {
+    if (URL_FORMATTERS.containsKey(predicate.stringValue()) && !(object instanceof BNode)) {
+      String pattern = URL_FORMATTERS.get(predicate.stringValue());
+      String url = pattern.equals("$1")
+              ? object.stringValue()
+              : pattern.replace("$1", wikiUrlEncode(object.stringValue()));
+      return pageDescription(webRetrieval, url);
+    } else if (object instanceof IRI) {
+      return entityDescription(connection, (IRI) object, context);
+    } else {
+      return "";
     }
   }
 
@@ -134,24 +222,23 @@ public class MainAddContext {
       }
       return OBJECT_MAPPER.writeValueAsString(desc);
     } catch (QueryEvaluationException | JsonProcessingException e) {
-      throw new RuntimeException(e);
+      LOGGER.warn("Error while retrieving " + entity, e);
+      return "";
     }
   }
 
-  private static CompletableFuture<String> pageDescription(WebRetrieval webRetrieval, String url) {
+  private static String pageDescription(WebRetrieval webRetrieval, String url) {
     try {
-      return webRetrieval.getWebPage(url).thenApply(page -> {
-        if (page.getStatusCode() != 200) {
-          LOGGER.info(page.getStatusCode() + " status code on page " + page.getLocation());
-        }
-        try {
-          return OBJECT_MAPPER.writeValueAsString(page);
-        } catch (JsonProcessingException e) {
-          throw new RuntimeException(e);
-        }
-      });
+      WebPage page = webRetrieval.getWebPage(url);
+      if (page.getStatusCode() != 200) {
+        LOGGER.info(page.getStatusCode() + " status code on page " + page.getLocation());
+      }
+      return OBJECT_MAPPER.writeValueAsString(page);
     } catch (URISyntaxException e) {
-      return CompletableFuture.completedFuture("");
+      return "";
+    } catch (IOException e) {
+      LOGGER.warn("Error while retrieving " + url, e);
+      return "";
     }
   }
 

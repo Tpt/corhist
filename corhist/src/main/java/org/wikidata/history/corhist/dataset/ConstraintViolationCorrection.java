@@ -15,12 +15,14 @@ import java.util.stream.IntStream;
 public final class ConstraintViolationCorrection {
   private final Constraint constraint;
   private final Statement targetTriple;
+  private final Statement otherTargetTriple;
   private final Set<Statement> correction;
   private final IRI correctionRevision;
 
-  ConstraintViolationCorrection(Constraint constraint, Statement targetTriple, Set<Statement> correction, IRI correctionRevision) {
+  ConstraintViolationCorrection(Constraint constraint, Statement targetTriple, Statement otherTargetTriple, Set<Statement> correction, IRI correctionRevision) {
     this.constraint = constraint;
     this.targetTriple = targetTriple;
+    this.otherTargetTriple = otherTargetTriple;
     this.correction = correction;
     this.correctionRevision = correctionRevision;
   }
@@ -41,6 +43,7 @@ public final class ConstraintViolationCorrection {
                     NTriplesUtil.parseURI(parts[3], valueFactory),
                     NTriplesUtil.parseValue(parts[4], valueFactory)
             ),
+            null,
             IntStream.range(0, (parts.length - 6) / 4).mapToObj(i -> valueFactory.createStatement(
                     NTriplesUtil.parseResource(parts[4 * i + 6], valueFactory),
                     NTriplesUtil.parseURI(parts[4 * i + 7], valueFactory),
@@ -57,6 +60,10 @@ public final class ConstraintViolationCorrection {
 
   public Statement getTargetTriple() {
     return targetTriple;
+  }
+
+  public Statement getOtherTargetTriple() {
+    return otherTargetTriple;
   }
 
   public Set<Statement> getCorrection() {

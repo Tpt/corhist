@@ -119,6 +119,7 @@ public class ConstraintViolationCorrectionLookup {
     return new ConstraintViolationCorrection(
             constraint,
             target,
+            null,
             correctionAndRevision.getLeft(),
             correctionAndRevision.getRight()
     );

@@ -7,6 +7,7 @@ import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.query.algebra.StatementPattern;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.eclipse.rdf4j.rio.ntriples.NTriplesUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wikidata.history.corhist.dataset.Constraint;
@@ -248,29 +249,29 @@ public class Main {
             .reduce(0L, (a, b) -> a + b);
   }
 
-  private static String toString(StatementPattern pattern) {
+  public static String toString(StatementPattern pattern) {
     StringBuilder builder = new StringBuilder();
     if (pattern.getSubjectVar().isConstant()) {
-      builder.append(pattern.getSubjectVar().getValue());
+      builder.append(NTriplesUtil.toNTriplesString(pattern.getSubjectVar().getValue()));
     } else {
       builder.append('?').append(pattern.getSubjectVar().getName());
     }
     builder.append(' ');
     if (pattern.getPredicateVar().isConstant()) {
-      builder.append(pattern.getPredicateVar().getValue());
+      builder.append(NTriplesUtil.toNTriplesString(pattern.getPredicateVar().getValue()));
     } else {
       builder.append('?').append(pattern.getPredicateVar().getName());
     }
     builder.append(' ');
     if (pattern.getObjectVar().isConstant()) {
-      builder.append(pattern.getObjectVar().getValue());
+      builder.append(NTriplesUtil.toNTriplesString(pattern.getObjectVar().getValue()));
     } else {
       builder.append('?').append(pattern.getObjectVar().getName());
     }
     builder.append(' ');
     if (pattern.getContextVar() != null) {
       if (pattern.getContextVar().isConstant()) {
-        builder.append(pattern.getContextVar().getValue());
+        builder.append(NTriplesUtil.toNTriplesString(pattern.getContextVar().getValue()));
       } else {
         builder.append('?').append(pattern.getContextVar().getName());
       }
