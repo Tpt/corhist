@@ -26,10 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
@@ -39,7 +35,6 @@ public class MainAddContext {
   private static final Logger LOGGER = LoggerFactory.getLogger(MainAddContext.class);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final Map<String, String> URL_FORMATTERS = MainAddContext.fetchUrlFormatters();
-  private static final Executor EXECUTOR = Executors.newFixedThreadPool(Math.min(16, Runtime.getRuntime().availableProcessors()));
   private static final IRI SCHEMA_DESCRIPTION = SimpleValueFactory.getInstance().createIRI("http://schema.org/description");
 
   public static void main(String[] args) throws ParseException, IOException {
@@ -59,14 +54,14 @@ public class MainAddContext {
     Collections.shuffle(lines); // In order to avoid doing the HTTP queries site per site
 
     try (
-            WebRetrieval webRetrieval = new WebRetrieval(Paths.get(params.getOptionValue("webCache")), EXECUTOR);
+            WebRetrieval webRetrieval = new WebRetrieval(Paths.get(params.getOptionValue("webCache")));
             HistoryRepository repository = new HistoryRepository(Paths.get(params.getOptionValue("index")));
             RepositoryConnection connection = repository.getConnection();
             BufferedWriter trainOut = newWriter(Paths.get(params.getOptionValue("file") + ".full.train.tsv.gz"));
             BufferedWriter devOut = newWriter(Paths.get(params.getOptionValue("file") + ".full.dev.tsv.gz"));
             BufferedWriter testOut = newWriter(Paths.get(params.getOptionValue("file") + ".full.test.tsv.gz"))
     ) {
-      lines.stream().map(line -> {
+      lines.parallelStream().map(line -> {
         ValueFactory valueFactory = connection.getValueFactory();
         String[] parts = line.split("\t");
         IRI context = NTriplesUtil.parseURI(parts[1], valueFactory);
@@ -74,22 +69,22 @@ public class MainAddContext {
         IRI predicate = NTriplesUtil.parseURI(parts[3], valueFactory);
         Value object = NTriplesUtil.parseValue(parts[4], valueFactory);
         String subjectDesc = entityDescription(connection, subject, context);
-        CompletableFuture<String> objectDescFuture;
+        String objectDesc;
         if (URL_FORMATTERS.containsKey(predicate.stringValue()) && !(object instanceof BNode)) {
           String pattern = URL_FORMATTERS.get(predicate.stringValue());
           String url = pattern.equals("$1")
                   ? object.stringValue()
                   : pattern.replace("$1", wikiUrlEncode(object.stringValue()));
-          objectDescFuture = pageDescription(webRetrieval, url);
+          objectDesc = pageDescription(webRetrieval, url);
         } else if (object instanceof IRI) {
-          objectDescFuture = CompletableFuture.completedFuture(entityDescription(connection, (IRI) object, context));
+          objectDesc = entityDescription(connection, (IRI) object, context);
         } else {
-          objectDescFuture = CompletableFuture.completedFuture("");
+          objectDesc = "";
         }
-        return objectDescFuture.thenApply((objectDesc) -> Stream.concat(
+        return Stream.concat(
                 Arrays.stream(parts),
                 Stream.of(subjectDesc, objectDesc)
-        ).collect(Collectors.joining("\t")));
+        ).collect(Collectors.joining("\t"));
       }).forEachOrdered(line -> {
         double rand = Math.random();
         Writer writer;
@@ -101,12 +96,10 @@ public class MainAddContext {
           writer = testOut;
         }
         try {
-          writer.write(line.get());
+          writer.write(line);
           writer.append('\n');
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
           throw new RuntimeException(e);
-        } catch (ExecutionException e) {
-          LOGGER.warn("Error while getting an URL: " + e.getCause().getMessage());
         }
       });
     }
@@ -137,20 +130,16 @@ public class MainAddContext {
     }
   }
 
-  private static CompletableFuture<String> pageDescription(WebRetrieval webRetrieval, String url) {
+  private static String pageDescription(WebRetrieval webRetrieval, String url) {
     try {
-      return webRetrieval.getWebPage(url).thenApply(page -> {
-        if (page.getStatusCode() != 200) {
-          LOGGER.info(page.getStatusCode() + " status code on page " + page.getLocation());
-        }
-        try {
-          return OBJECT_MAPPER.writeValueAsString(page);
-        } catch (JsonProcessingException e) {
-          throw new RuntimeException(e);
-        }
-      });
+      return OBJECT_MAPPER.writeValueAsString(webRetrieval.getWebPage(url));
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException(e);
     } catch (URISyntaxException e) {
-      return CompletableFuture.completedFuture("");
+      return "";
+    } catch (InterruptedException | IOException e) {
+      LOGGER.warn("Error while getting the URL " + url, e);
+      return "";
     }
   }
 
