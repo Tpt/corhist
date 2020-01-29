@@ -1,6 +1,7 @@
 package org.wikidata.history.corhist.dataset;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.net.URI;
 
@@ -10,7 +11,7 @@ public final class WebPage implements ContextElement {
   private final String content;
 
   @JsonCreator
-  public WebPage(URI location, int statusCode, String content) {
+  public WebPage(@JsonProperty("location") URI location, @JsonProperty("statusCode") int statusCode, @JsonProperty("content") String content) {
     this.location = location;
     this.statusCode = statusCode;
     this.content = content;

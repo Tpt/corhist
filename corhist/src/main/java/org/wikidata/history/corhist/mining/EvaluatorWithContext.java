@@ -2,23 +2,17 @@ package org.wikidata.history.corhist.mining;
 
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.ValueFactory;
-import org.eclipse.rdf4j.repository.RepositoryConnection;
-import org.wikidata.history.corhist.dataset.ConstraintViolationCorrection;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.wikidata.history.corhist.dataset.ConstraintViolationCorrectionWithContext;
 import org.wikidata.history.sparql.Vocabulary;
 
 import java.util.*;
 
-class Evaluator {
+class EvaluatorWithContext {
 
-  private final ValueFactory valueFactory;
-  private final RepositoryConnection repositoryConnection;
+  private static final ValueFactory VALUE_FACTORY = SimpleValueFactory.getInstance();
 
-  Evaluator(RepositoryConnection repositoryConnection) {
-    valueFactory = repositoryConnection.getValueFactory();
-    this.repositoryConnection = repositoryConnection;
-  }
-
-  Evaluation evaluate(List<ConstraintRule> rules, List<ConstraintViolationCorrection> corrections) {
+  Evaluation evaluate(List<ConstraintRuleWithContext> rules, List<ConstraintViolationCorrectionWithContext> corrections) {
     if (corrections.isEmpty()) {
       throw new IllegalArgumentException("The test set should not be empty");
     }
@@ -29,13 +23,13 @@ class Evaluator {
     int badCorrections = 0;
     int someCorrectionFound = 0;
     int noCorrectionFound = 0;
-    for (ConstraintViolationCorrection correction : corrections) {
+    for (ConstraintViolationCorrectionWithContext correction : corrections) {
       Set<Statement> possibleCorrection = buildPossibleCorrection(rules, correction).orElseGet(Collections::emptySet);
       if (possibleCorrection.isEmpty()) {
         noCorrectionFound++;
       } else {
         someCorrectionFound++;
-        if (possibleCorrection.equals(correction.getCorrection())) {
+        if (possibleCorrection.equals(correction.getCorrection().getCorrection())) {
           goodCorrections++;
         } else {
           //System.out.println("Expected:" + correction.getCorrection());
@@ -55,16 +49,16 @@ class Evaluator {
     );
   }
 
-  private Optional<Set<Statement>> buildPossibleCorrection(List<ConstraintRule> rules, ConstraintViolationCorrection correction) {
+  private Optional<Set<Statement>> buildPossibleCorrection(List<ConstraintRuleWithContext> rules, ConstraintViolationCorrectionWithContext correction) {
     return rules.stream().flatMap(rule ->
-            PatternEvaluator.evaluate(rule.getViolationBody(), valueFactory.createStatement(
-                    correction.getTargetTriple().getSubject(),
-                    correction.getConstraint().getId(),
-                    correction.getTargetTriple().getObject(),
-                    Vocabulary.toGlobalState(Vocabulary.previousRevision(correction.getCorrectionRevision()))
+            PatternEvaluator.evaluate(rule.getViolationBody(), VALUE_FACTORY.createStatement(
+                    correction.getCorrection().getTargetTriple().getSubject(),
+                    correction.getCorrection().getConstraint().getId(),
+                    correction.getCorrection().getTargetTriple().getObject(),
+                    Vocabulary.toGlobalState(Vocabulary.previousRevision(correction.getCorrection().getCorrectionRevision()))
             )).flatMap(violationBindings ->
-                    PatternEvaluator.evaluate(rule.getContextBody(), violationBindings, repositoryConnection)
-                            .map(bindings -> PatternEvaluator.instantiate(rule.getHead(), bindings, valueFactory))
+                    PatternEvaluator.evaluate(rule.getContextBody(), violationBindings, correction.buildContextModel())
+                            .map(bindings -> PatternEvaluator.instantiate(rule.getHead(), bindings, VALUE_FACTORY))
             )
     ).findAny();
   }

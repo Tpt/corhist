@@ -3,10 +3,7 @@ package org.wikidata.history.corhist.mining;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.cli.*;
-import org.eclipse.rdf4j.model.IRI;
-import org.eclipse.rdf4j.model.Statement;
-import org.eclipse.rdf4j.model.Value;
-import org.eclipse.rdf4j.model.ValueFactory;
+import org.eclipse.rdf4j.model.*;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.eclipse.rdf4j.query.QueryEvaluationException;
@@ -78,7 +75,7 @@ public class MainAddContext {
         Value object = NTriplesUtil.parseValue(parts[4], valueFactory);
         String subjectDesc = entityDescription(connection, subject, context);
         CompletableFuture<String> objectDescFuture;
-        if (URL_FORMATTERS.containsKey(predicate.stringValue())) {
+        if (URL_FORMATTERS.containsKey(predicate.stringValue()) && !(object instanceof BNode)) {
           String pattern = URL_FORMATTERS.get(predicate.stringValue());
           String url = pattern.equals("$1")
                   ? object.stringValue()

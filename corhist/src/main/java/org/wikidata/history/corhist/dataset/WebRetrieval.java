@@ -56,15 +56,15 @@ public class WebRetrieval implements AutoCloseable {
     String pageContent = pageContentCache.get(location.toString());
     if (pageStatusCode == null || pageContent == null) {
       //TODO
-      return CompletableFuture.failedFuture(new Exception("skipped"));
-      /*return fetchWebPage(location).thenApply(webPage -> {
+      //return CompletableFuture.failedFuture(new Exception("skipped"));
+      return fetchWebPage(location).thenApply(webPage -> {
         if (!uri.equals(webPage.getLocation())) {
           redirectCache.put(uri.toString(), webPage.getLocation().toString());
         }
         pageStatusCodeCache.put(webPage.getLocation().toString(), webPage.getStatusCode());
         pageContentCache.put(webPage.getLocation().toString(), webPage.getContent());
         return webPage;
-      });*/
+      });
     } else {
       return CompletableFuture.completedFuture(new WebPage(location, pageStatusCode, pageContent));
     }

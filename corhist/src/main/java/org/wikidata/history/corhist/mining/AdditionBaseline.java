@@ -34,7 +34,7 @@ class AdditionBaseline {
     });
     return new Evaluation(
             ((float) allAndFoundAndCorrect[2]) / allAndFoundAndCorrect[1],
-            ((float) allAndFoundAndCorrect[1]) / allAndFoundAndCorrect[0],
+            ((float) allAndFoundAndCorrect[2]) / allAndFoundAndCorrect[0],
             allAndFoundAndCorrect[0]
     );
   }

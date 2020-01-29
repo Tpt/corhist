@@ -12,14 +12,14 @@ public final class Constraint {
   private IRI type;
   private Map<IRI, List<Value>> parameters;
 
-  Constraint(IRI id, IRI property, IRI type, Map<IRI, List<Value>> parameters) {
+  public Constraint(IRI id, IRI property, IRI type, Map<IRI, List<Value>> parameters) {
     this.id = id;
     this.property = property;
     this.type = type;
     this.parameters = parameters;
   }
 
-  Constraint(IRI id, IRI property, IRI type) {
+  public Constraint(IRI id, IRI property, IRI type) {
     this(id, property, type, new HashMap<>());
   }
 

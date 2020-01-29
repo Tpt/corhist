@@ -1,10 +1,12 @@
 package org.wikidata.history.corhist.dataset;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Literal;
 import org.eclipse.rdf4j.model.Value;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.rio.ntriples.NTriplesUtil;
 
 import java.util.ArrayList;
@@ -15,12 +17,31 @@ import java.util.stream.Collectors;
 
 public final class EntityDescription implements ContextElement {
   private final IRI id;
-  private final Map<IRI, List<Value>> facts = new HashMap<>();
-  private final Map<String, String> labels = new HashMap<>();
-  private final Map<String, String> descriptions = new HashMap<>();
+  private final Map<IRI, List<Value>> facts;
+  private final Map<String, String> labels;
+  private final Map<String, String> descriptions;
 
   public EntityDescription(IRI id) {
     this.id = id;
+    this.facts = new HashMap<>();
+    this.labels = new HashMap<>();
+    this.descriptions = new HashMap<>();
+  }
+
+  @JsonCreator
+  EntityDescription(
+          @JsonProperty("id") String id,
+          @JsonProperty("facts") Map<String, List<String>> facts,
+          @JsonProperty("labels") Map<String, String> labels,
+          @JsonProperty("descriptions") Map<String, String> descriptions
+  ) {
+    this.id = NTriplesUtil.parseURI(id, SimpleValueFactory.getInstance());
+    this.facts = facts.entrySet().stream().collect(Collectors.toMap(
+            e -> NTriplesUtil.parseURI(e.getKey(), SimpleValueFactory.getInstance()),
+            e -> e.getValue().stream().map(v -> NTriplesUtil.parseValue(v, SimpleValueFactory.getInstance())).collect(Collectors.toList())
+    ));
+    this.labels = labels;
+    this.descriptions = descriptions;
   }
 
   public void addFact(IRI predicate, Value object) {

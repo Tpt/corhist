@@ -28,6 +28,6 @@ class DeletionBaseline {
         allAndCorrect[1]++;
       }
     });
-    return new Evaluation(((float) allAndCorrect[1]) / allAndCorrect[0], 1, allAndCorrect[0]);
+    return new Evaluation(((float) allAndCorrect[1]) / allAndCorrect[0], ((float) allAndCorrect[1]) / allAndCorrect[0], allAndCorrect[0]);
   }
 }
