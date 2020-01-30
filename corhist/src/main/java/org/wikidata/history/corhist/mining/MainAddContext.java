@@ -26,6 +26,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
@@ -69,22 +73,22 @@ public class MainAddContext {
         IRI predicate = NTriplesUtil.parseURI(parts[3], valueFactory);
         Value object = NTriplesUtil.parseValue(parts[4], valueFactory);
         String subjectDesc = entityDescription(connection, subject, context);
-        String objectDesc;
+        CompletableFuture<String> objectDescFuture;
         if (URL_FORMATTERS.containsKey(predicate.stringValue()) && !(object instanceof BNode)) {
           String pattern = URL_FORMATTERS.get(predicate.stringValue());
           String url = pattern.equals("$1")
                   ? object.stringValue()
                   : pattern.replace("$1", wikiUrlEncode(object.stringValue()));
-          objectDesc = pageDescription(webRetrieval, url);
+          objectDescFuture = pageDescription(webRetrieval, url);
         } else if (object instanceof IRI) {
-          objectDesc = entityDescription(connection, (IRI) object, context);
+          objectDescFuture = CompletableFuture.completedFuture(entityDescription(connection, (IRI) object, context));
         } else {
-          objectDesc = "";
+          objectDescFuture = CompletableFuture.completedFuture("");
         }
-        return Stream.concat(
+        return objectDescFuture.thenApply((objectDesc) -> Stream.concat(
                 Arrays.stream(parts),
                 Stream.of(subjectDesc, objectDesc)
-        ).collect(Collectors.joining("\t"));
+        ).collect(Collectors.joining("\t")));
       }).forEachOrdered(line -> {
         double rand = Math.random();
         Writer writer;
@@ -96,10 +100,14 @@ public class MainAddContext {
           writer = testOut;
         }
         try {
-          writer.write(line);
+          writer.write(line.get(10, TimeUnit.SECONDS));
           writer.append('\n');
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
           throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+          LOGGER.warn("Error while getting an URL: " + e.getCause().getMessage());
+        } catch (TimeoutException e) {
+          LOGGER.warn("Timeout while getting an URL");
         }
       });
     }
@@ -130,16 +138,20 @@ public class MainAddContext {
     }
   }
 
-  private static String pageDescription(WebRetrieval webRetrieval, String url) {
+  private static CompletableFuture<String> pageDescription(WebRetrieval webRetrieval, String url) {
     try {
-      return OBJECT_MAPPER.writeValueAsString(webRetrieval.getWebPage(url));
-    } catch (JsonProcessingException e) {
-      throw new RuntimeException(e);
+      return webRetrieval.getWebPage(url).thenApply(page -> {
+        if (page.getStatusCode() != 200) {
+          LOGGER.info(page.getStatusCode() + " status code on page " + page.getLocation());
+        }
+        try {
+          return OBJECT_MAPPER.writeValueAsString(page);
+        } catch (JsonProcessingException e) {
+          throw new RuntimeException(e);
+        }
+      });
     } catch (URISyntaxException e) {
-      return "";
-    } catch (InterruptedException | IOException e) {
-      LOGGER.warn("Error while getting the URL " + url, e);
-      return "";
+      return CompletableFuture.completedFuture("");
     }
   }
 

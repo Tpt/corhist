@@ -6,7 +6,6 @@ import org.mapdb.DB;
 import org.mapdb.DBMaker;
 import org.mapdb.Serializer;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
@@ -15,11 +14,12 @@ import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 public class WebRetrieval implements AutoCloseable {
 
   private static final String USER_AGENT = "CorHistBot/0.1 (ttanon@enst.fr)";
-  static final Duration TIMEOUT = Duration.ofSeconds(5);
+  private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
   private final HttpClient httpClient;
   private final DB db;
@@ -47,7 +47,7 @@ public class WebRetrieval implements AutoCloseable {
     db.close();
   }
 
-  public WebPage getWebPage(String url) throws URISyntaxException, IOException, InterruptedException {
+  public CompletableFuture<WebPage> getWebPage(String url) throws URISyntaxException {
     URI uri = parseURI(url);
     URI location = getFinalLocation(uri);
     Integer pageStatusCode = pageStatusCodeCache.get(location.toString());
@@ -55,15 +55,16 @@ public class WebRetrieval implements AutoCloseable {
     if (pageStatusCode == null || pageContent == null) {
       //TODO
       //return CompletableFuture.failedFuture(new Exception("skipped"));
-      WebPage webPage = fetchWebPage(location);
-      if (!uri.equals(webPage.getLocation())) {
-        redirectCache.put(uri.toString(), webPage.getLocation().toString());
-      }
-      pageStatusCodeCache.put(webPage.getLocation().toString(), webPage.getStatusCode());
-      pageContentCache.put(webPage.getLocation().toString(), webPage.getContent());
-      return webPage;
+      return fetchWebPage(location).thenApply(webPage -> {
+        if (!uri.equals(webPage.getLocation())) {
+          redirectCache.put(uri.toString(), webPage.getLocation().toString());
+        }
+        pageStatusCodeCache.put(webPage.getLocation().toString(), webPage.getStatusCode());
+        pageContentCache.put(webPage.getLocation().toString(), webPage.getContent());
+        return webPage;
+      });
     } else {
-      return new WebPage(location, pageStatusCode, pageContent);
+      return CompletableFuture.completedFuture(new WebPage(location, pageStatusCode, pageContent));
     }
   }
 
@@ -83,12 +84,14 @@ public class WebRetrieval implements AutoCloseable {
     return uri;
   }
 
-  private WebPage fetchWebPage(URI uri) throws IOException, InterruptedException {
+  private CompletableFuture<WebPage> fetchWebPage(URI uri) {
     //TODO: follow rel="canonical"
-    HttpResponse<String> response = httpClient.send(buildFetchRequest(uri), HttpResponse.BodyHandlers.ofString());
-    Document document = Jsoup.parse(response.body(), response.uri().toString()).normalise();
-    document.charset();
-    return new WebPage(response.uri(), response.statusCode(), document.toString());
+    return httpClient.sendAsync(buildFetchRequest(uri), HttpResponse.BodyHandlers.ofString())
+            .thenApply(response -> {
+              Document document = Jsoup.parse(response.body(), response.uri().toString()).normalise();
+              document.charset();
+              return new WebPage(response.uri(), response.statusCode(), document.toString());
+            });
   }
 
   private HttpRequest buildFetchRequest(URI uri) {
