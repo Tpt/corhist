@@ -65,53 +65,57 @@ public class MainAddContext {
 
       int count = 0;
       for (String line : lines) {
-        String[] parts = line.split("\t");
-        IRI constraint = NTriplesUtil.parseURI(parts[0], valueFactory);
-        IRI context = NTriplesUtil.parseURI(parts[1], valueFactory);
-        IRI subject = NTriplesUtil.parseURI(parts[2], valueFactory);
-        IRI predicate = NTriplesUtil.parseURI(parts[3], valueFactory);
-        Value object = NTriplesUtil.parseValue(parts[4], valueFactory);
-        String objectDesc = objectDescription(connection, webRetrieval, object, predicate, context);
-        List<Statement> otherTriples = Collections.emptyList();
         try {
-          otherTriples = otherTriples(constraint, subject, predicate, object, context, constraints, connection);
-        } catch (QueryEvaluationException e) {
-          LOGGER.warn(e.getMessage(), e);
-        }
-        String subjectDesc = entityDescription(connection, subject, context);
+          ConstraintViolationCorrection correction = ConstraintViolationCorrection.read(line, valueFactory, constraints);
+          String[] parts = line.split("\t");
+          IRI context = correction.getCorrectionRevision();
+          Resource subject = correction.getTargetTriple().getSubject();
+          IRI predicate = correction.getTargetTriple().getPredicate();
+          Value object = correction.getTargetTriple().getObject();
+          String objectDesc = objectDescription(connection, webRetrieval, object, predicate, context);
+          List<Statement> otherTriples = Collections.emptyList();
+          try {
+            otherTriples = otherTriples(correction, connection);
+          } catch (QueryEvaluationException e) {
+            LOGGER.warn(e.getMessage(), e);
+          }
+          String subjectDesc = entityDescription(connection, (IRI) subject, context);
 
-        if (otherTriples.isEmpty()) {
-          write(Stream.concat(
-                  Stream.concat(
-                          Arrays.stream(parts).limit(5),
-                          Stream.of("", "", "")
-                  ),
-                  Stream.concat(
-                          Arrays.stream(parts).skip(5),
-                          Stream.of(subjectDesc, objectDesc, "")
-                  )
-          ).collect(Collectors.joining("\t")), trainOut, devOut, testOut);
-        } else {
-          for (Statement otherTriple : otherTriples) {
-            String otherDesc = (!subject.equals(otherTriple.getSubject()) && !object.equals(otherTriple.getSubject()))
-                    ? entityDescription(connection, (IRI) otherTriple.getSubject(), context)
-                    : objectDescription(connection, webRetrieval, otherTriple.getObject(), otherTriple.getPredicate(), context);
-
+          if (otherTriples.isEmpty()) {
             write(Stream.concat(
                     Stream.concat(
                             Arrays.stream(parts).limit(5),
-                            Stream.of(otherTriple.getSubject(), otherTriple.getPredicate(), otherTriple.getObject()).map(NTriplesUtil::toNTriplesString)
+                            Stream.of("", "", "")
                     ),
                     Stream.concat(
                             Arrays.stream(parts).skip(5),
-                            Stream.of(subjectDesc, objectDesc, otherDesc)
+                            Stream.of(subjectDesc, objectDesc, "")
                     )
             ).collect(Collectors.joining("\t")), trainOut, devOut, testOut);
+          } else {
+            for (Statement otherTriple : otherTriples) {
+              String otherDesc = (!subject.equals(otherTriple.getSubject()) && !object.equals(otherTriple.getSubject()))
+                      ? entityDescription(connection, (IRI) otherTriple.getSubject(), context)
+                      : objectDescription(connection, webRetrieval, otherTriple.getObject(), otherTriple.getPredicate(), context);
+
+              write(Stream.concat(
+                      Stream.concat(
+                              Arrays.stream(parts).limit(5),
+                              Stream.of(otherTriple.getSubject(), otherTriple.getPredicate(), otherTriple.getObject()).map(NTriplesUtil::toNTriplesString)
+                      ),
+                      Stream.concat(
+                              Arrays.stream(parts).skip(5),
+                              Stream.of(subjectDesc, objectDesc, otherDesc)
+                      )
+              ).collect(Collectors.joining("\t")), trainOut, devOut, testOut);
+            }
           }
-        }
-        count += 1;
-        if (count > LIMIT) {
-          return; // We stop here
+          count += 1;
+          if (count > LIMIT) {
+            return; // We stop here
+          }
+        } catch (IllegalArgumentException e) {
+          //ignore
         }
       }
     }
@@ -135,51 +139,63 @@ public class MainAddContext {
     }
   }
 
-  private static List<Statement> otherTriples(IRI constraintId, Resource subject, IRI predicate, Value object, IRI context, Map<IRI, Constraint> constraints, RepositoryConnection connection) {
-    context = Vocabulary.toGlobalState(Vocabulary.previousRevision(context));
-
-    Constraint constraint = constraints.get(constraintId);
-    if (constraint == null) {
-      return Collections.emptyList();
-    }
+  private static List<Statement> otherTriples(ConstraintViolationCorrection correction, RepositoryConnection connection) {
+    IRI context = Vocabulary.toGlobalState(Vocabulary.previousRevision(correction.getCorrectionRevision()));
+    Constraint constraint = correction.getConstraint();
 
     RepositoryResult<Statement> results;
+    Stream<Statement> deletions = correction.getCorrection().stream()
+            .filter(t -> t.getContext().equals(Vocabulary.HISTORY_DELETION))
+            .map(t -> connection.getValueFactory().createStatement(
+                    t.getSubject(),
+                    t.getPredicate(),
+                    t.getObject()
+            )).filter(t -> !t.equals(correction.getTargetTriple()));
     List<Statement> conflicts = new ArrayList<>();
     switch (constraint.getType().toString()) {
       case "http://www.wikidata.org/entity/Q21502838": // conflict with
-        List<Value> propertiesInConflict = constraint.getParameters(QueriesForConstraintCorrectionsBuilder.PROPERTY_PARAMETER);
-        if (propertiesInConflict.size() != 1) {
-          LOGGER.warn("Invalid constraint: " + constraint.getId());
-          break;
-        }
-        IRI propertyInConflict = Vocabulary.toDirectProperty((IRI) propertiesInConflict.get(0));
-        Set<Value> values = new HashSet<>(constraint.getParameters(QueriesForConstraintCorrectionsBuilder.ITEM_PARAMETER));
-        results = connection.getStatements(subject, propertyInConflict, null, context);
-        results.enableDuplicateFilter();
-        while (results.hasNext()) {
-          Statement result = results.next();
-          if (values.isEmpty() || values.contains(result.getObject())) {
-            conflicts.add(result);
+        deletions.forEach(conflicts::add);
+        if (conflicts.isEmpty()) {
+          List<Value> propertiesInConflict = constraint.getParameters(QueriesForConstraintCorrectionsBuilder.PROPERTY_PARAMETER);
+          if (propertiesInConflict.size() != 1) {
+            LOGGER.warn("Invalid constraint: " + constraint.getId());
+            break;
+          }
+          IRI propertyInConflict = Vocabulary.toDirectProperty((IRI) propertiesInConflict.get(0));
+          Set<Value> values = new HashSet<>(constraint.getParameters(QueriesForConstraintCorrectionsBuilder.ITEM_PARAMETER));
+          results = connection.getStatements(correction.getTargetTriple().getSubject(), propertyInConflict, null, context);
+          results.enableDuplicateFilter();
+          while (results.hasNext()) {
+            Statement result = results.next();
+            if (values.isEmpty() || values.contains(result.getObject())) {
+              conflicts.add(result);
+            }
           }
         }
         break;
       case "http://www.wikidata.org/entity/Q19474404": // single
-        results = connection.getStatements(subject, predicate, null, context);
-        results.enableDuplicateFilter();
-        while (results.hasNext()) {
-          Statement result = results.next();
-          if (!object.equals(result.getObject())) {
-            conflicts.add(result);
+        deletions.forEach(conflicts::add);
+        if (conflicts.isEmpty()) {
+          results = connection.getStatements(correction.getTargetTriple().getSubject(), correction.getTargetTriple().getPredicate(), null, context);
+          results.enableDuplicateFilter();
+          while (results.hasNext()) {
+            Statement result = results.next();
+            if (!correction.getTargetTriple().getObject().equals(result.getObject())) {
+              conflicts.add(result);
+            }
           }
         }
         break;
       case "http://www.wikidata.org/entity/Q21502410": // unique
-        results = connection.getStatements(null, predicate, object, context);
-        results.enableDuplicateFilter();
-        while (results.hasNext()) {
-          Statement result = results.next();
-          if (!subject.equals(result.getSubject())) {
-            conflicts.add(result);
+        deletions.forEach(conflicts::add);
+        if (conflicts.isEmpty()) { // Everything else should be preferred to the target triple (during the current rev?)
+          results = connection.getStatements(null, correction.getTargetTriple().getPredicate(), correction.getTargetTriple().getObject(), context);
+          results.enableDuplicateFilter();
+          while (results.hasNext()) {
+            Statement result = results.next();
+            if (!correction.getTargetTriple().getSubject().equals(result.getSubject())) {
+              conflicts.add(result);
+            }
           }
         }
         break;

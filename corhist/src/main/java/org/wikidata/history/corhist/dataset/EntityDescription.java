@@ -55,7 +55,7 @@ public final class EntityDescription implements ContextElement {
   }
 
   public void setDescription(Value description) {
-    labels.put(((Literal) description).getLanguage().get(), description.stringValue());
+    descriptions.put(((Literal) description).getLanguage().get(), description.stringValue());
   }
 
   public String getType() {
