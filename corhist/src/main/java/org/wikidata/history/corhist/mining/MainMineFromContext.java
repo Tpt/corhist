@@ -16,10 +16,7 @@ import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
@@ -93,9 +90,9 @@ public class MainMineFromContext {
                 rulesWriter
                         .append(rule.getHead().stream().map(Main::toString).collect(Collectors.joining("\t")))
                         .append("\t<-\t")
-                        .append(Main.toString(rule.getViolationBody()))
+                        .append(rule.getViolationBody().toString())
                         .append("\t")
-                        .append(rule.getContextBody().stream().map(Main::toString).collect(Collectors.joining("\t")))
+                        .append(rule.getContextBody().stream().map(Objects::toString).collect(Collectors.joining("\t")))
                         .append("\t")
                         .append(String.valueOf(rule.getStdConfidence()))
                         .append("\t")

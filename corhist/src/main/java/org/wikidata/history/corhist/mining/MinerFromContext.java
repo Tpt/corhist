@@ -7,8 +7,8 @@ import org.eclipse.rdf4j.query.algebra.StatementPattern;
 import org.eclipse.rdf4j.query.algebra.Var;
 import org.eclipse.rdf4j.query.algebra.helpers.TupleExprs;
 import org.wikidata.history.corhist.dataset.ConstraintViolationCorrectionWithContext;
-import org.wikidata.history.corhist.mining.ConstraintRuleWithContext.ContextPattern;
 import org.wikidata.history.corhist.mining.ConstraintRuleWithContext.ContextualBinding;
+import org.wikidata.history.corhist.mining.ConstraintRuleWithContext.SimplePattern;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -33,13 +33,13 @@ class MinerFromContext {
   }
 
   private Stream<ConstraintRuleWithContext> possibleBasicRules(List<ConstraintViolationCorrectionWithContext> corrections) {
-    Map<StatementPattern, List<ContextualBinding>> violationPatterns = new HashMap<>();
-    Map<Map.Entry<StatementPattern, Set<StatementPattern>>, List<ContextualBinding>> violationAndCorrectionPatterns = new HashMap<>();
+    Map<SimplePattern, List<ContextualBinding>> violationPatterns = new HashMap<>();
+    Map<Map.Entry<SimplePattern, Set<StatementPattern>>, List<ContextualBinding>> violationAndCorrectionPatterns = new HashMap<>();
 
     corrections.forEach(correction -> {
       //We first build a pattern for the violation and we expand it for the correction
       createViolationPattern(correction).forEach(violationPatternAndBinding -> {
-        StatementPattern violationPattern = violationPatternAndBinding.getKey();
+        SimplePattern violationPattern = violationPatternAndBinding.getKey();
         ContextualBinding binding = violationPatternAndBinding.getValue();
         Set<StatementPattern> correctionPatterns = buildCorrectionPattern(
                 binding,
@@ -58,7 +58,7 @@ class MinerFromContext {
 
     //We transform the patterns we have found in rules
     return violationAndCorrectionPatterns.entrySet().stream().map(violationAndCorrectionPatternAndBindings -> {
-      StatementPattern violationPattern = violationAndCorrectionPatternAndBindings.getKey().getKey();
+      SimplePattern violationPattern = violationAndCorrectionPatternAndBindings.getKey().getKey();
       Set<StatementPattern> correctionPatterns = violationAndCorrectionPatternAndBindings.getKey().getValue();
       List<ContextualBinding> bodyBindings = violationPatterns.get(violationPattern);
       List<ContextualBinding> fullBindings = violationAndCorrectionPatternAndBindings.getValue();
@@ -67,17 +67,17 @@ class MinerFromContext {
   }
 
 
-  private Stream<Map.Entry<StatementPattern, ContextualBinding>> createViolationPattern(ConstraintViolationCorrectionWithContext correction) {
+  private Stream<Map.Entry<SimplePattern, ContextualBinding>> createViolationPattern(ConstraintViolationCorrectionWithContext correction) {
     Value subject = correction.getCorrection().getTargetTriple().getSubject();
-    Var predicate = TupleExprs.createConstVar(correction.getCorrection().getConstraint().getId());
+    IRI predicate = correction.getCorrection().getConstraint().getId();
     Value object = correction.getCorrection().getTargetTriple().getObject();
     return Stream.of(
             Map.entry(
-                    new StatementPattern(S, predicate, O),
+                    new SimplePattern("s", predicate, "o"),
                     new ContextualBinding(correction, subject, object, null, null)
             ),
             Map.entry(
-                    new StatementPattern(S, predicate, TupleExprs.createConstVar(correction.getCorrection().getTargetTriple().getObject())),
+                    new SimplePattern("s", predicate, correction.getCorrection().getTargetTriple().getObject()),
                     new ContextualBinding(correction, subject, null, null, null)
             )
     );
@@ -103,25 +103,25 @@ class MinerFromContext {
                         return Stream.empty();
                       }
                       if (mainTriple.getSubject().equals(otherTriple.getSubject())) {
-                        if (mainTriple.getObject().equals(otherTriple.getObject()) && !rule.getViolationBody().getObjectVar().isConstant()) {
+                        if (mainTriple.getObject().equals(otherTriple.getObject()) && rule.getViolationBody().objectVariable != null) {
                           return Stream.of(
-                                  new ContextPattern("s", otherTriple.getPredicate(), "o")
+                                  new SimplePattern("s", otherTriple.getPredicate(), "o")
                           );
                         } else {
                           return Stream.of(
-                                  new ContextPattern("s", otherTriple.getPredicate(), "otherO"),
-                                  new ContextPattern("s", otherTriple.getPredicate(), otherTriple.getObject())
+                                  new SimplePattern("s", otherTriple.getPredicate(), "otherO"),
+                                  new SimplePattern("s", otherTriple.getPredicate(), otherTriple.getObject())
                           );
                         }
-                      } else if (mainTriple.getObject().equals(otherTriple.getObject()) && !rule.getViolationBody().getObjectVar().isConstant()) {
-                        return Stream.of(new ContextPattern("otherS", otherTriple.getPredicate(), "o"));
+                      } else if (mainTriple.getObject().equals(otherTriple.getObject()) && rule.getViolationBody().objectVariable != null) {
+                        return Stream.of(new SimplePattern("otherS", otherTriple.getPredicate(), "o"));
                       } else {
                         throw new IllegalArgumentException("Unexpected main triple and other triple: " + mainTriple + " " + otherTriple);
                       }
                     })
                     .distinct()
                     .map(pattern -> new ConstraintRuleWithContext(
-                            rule.getHead(), rule.getViolationBody(), concat(rule.getContextPatterns(), pattern),
+                            rule.getHead(), rule.getViolationBody(), concat(rule.getContextBody(), pattern),
                             rule.getBodyBindings()
                                     .flatMap(binding -> binding.evaluate(pattern))
                                     .collect(Collectors.toList()),
@@ -139,20 +139,25 @@ class MinerFromContext {
   }
 
   private Stream<ConstraintRuleWithContext> refineWithGraph(ConstraintRuleWithContext rule, int depth) {
+    Set<String> variables = getVariables(rule);
     return Stream.concat(
-            getVariables(rule).flatMap(var -> {
+            variables.stream().flatMap(var -> {
               Stats stats = statsForVariable(var, rule);
               return Stream.concat(
+                      //TODO: set object
                       stats.possiblePredicates()
-                              .map(p -> new ContextPattern(var, p, (Value) null))
-                              .filter(pattern -> !rule.getContextPatterns().contains(pattern)),
+                              .flatMap(p -> Stream.concat(
+                                      Stream.of(new SimplePattern(var, p, (Value) null)),
+                                      variables.stream().map(v -> new SimplePattern(var, p, v))
+                              ))
+                              .filter(pattern -> !rule.getContextBody().contains(pattern)),
                       stats.possiblePredicateObjects()
-                              .map(po -> new ContextPattern(var, po.getKey(), po.getValue()))
-                              .filter(pattern -> !rule.getContextPatterns().contains(pattern))
-                              .filter(pattern -> !rule.getContextPatterns().contains(new ContextPattern(pattern.subjectVariable, pattern.predicate, (Value) null)))
+                              .map(po -> new SimplePattern(var, po.getKey(), po.getValue()))
+                              .filter(pattern -> !rule.getContextBody().contains(pattern))
+                              .filter(pattern -> !rule.getContextBody().contains(new SimplePattern(pattern.subjectVariable, pattern.predicate, (Value) null)))
               )
                       .map(pattern -> new ConstraintRuleWithContext(
-                              rule.getHead(), rule.getViolationBody(), concat(rule.getContextPatterns(), pattern),
+                              rule.getHead(), rule.getViolationBody(), concat(rule.getContextBody(), pattern),
                               rule.getBodyBindings()
                                       .filter(binding -> binding.matches(pattern))
                                       .collect(Collectors.toList()),
@@ -179,14 +184,14 @@ class MinerFromContext {
     return stats;
   }
 
-  private Stream<String> getVariables(ConstraintRuleWithContext rule) {
+  private Set<String> getVariables(ConstraintRuleWithContext rule) {
     return Stream.concat(
             Stream.concat(rule.getHead().stream().flatMap(this::getVariables), getVariables(rule.getViolationBody())),
-            rule.getContextPatterns().stream().flatMap(this::getVariables)
-    ).distinct();
+            rule.getContextBody().stream().flatMap(this::getVariables)
+    ).collect(Collectors.toSet());
   }
 
-  private Stream<String> getVariables(ContextPattern pattern) {
+  private Stream<String> getVariables(SimplePattern pattern) {
     return (pattern.objectVariable == null)
             ? Stream.of(pattern.subjectVariable)
             : Stream.of(pattern.subjectVariable, pattern.objectVariable);

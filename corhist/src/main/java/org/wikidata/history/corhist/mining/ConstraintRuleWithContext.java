@@ -3,24 +3,21 @@ package org.wikidata.history.corhist.mining;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Value;
 import org.eclipse.rdf4j.query.algebra.StatementPattern;
-import org.eclipse.rdf4j.query.algebra.Var;
-import org.eclipse.rdf4j.query.algebra.helpers.TupleExprs;
 import org.eclipse.rdf4j.rio.ntriples.NTriplesUtil;
 import org.wikidata.history.corhist.dataset.ConstraintViolationCorrectionWithContext;
 
 import java.util.*;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public final class ConstraintRuleWithContext implements Comparable<ConstraintRuleWithContext> {
 
   private final Set<StatementPattern> head;
-  private final StatementPattern violationBody;
-  private final List<ContextPattern> contextPatterns;
+  private final SimplePattern violationBody;
+  private final List<SimplePattern> contextPatterns;
   private final List<ContextualBinding> bodyBindings;
   private final List<ContextualBinding> fullBindings;
 
-  ConstraintRuleWithContext(Set<StatementPattern> head, StatementPattern violationBody, List<ContextPattern> contextPatterns, List<ContextualBinding> bodyBindings, List<ContextualBinding> fullBindings) {
+  ConstraintRuleWithContext(Set<StatementPattern> head, SimplePattern violationBody, List<SimplePattern> contextPatterns, List<ContextualBinding> bodyBindings, List<ContextualBinding> fullBindings) {
     this.head = head;
     this.violationBody = violationBody;
     this.contextPatterns = contextPatterns;
@@ -28,7 +25,7 @@ public final class ConstraintRuleWithContext implements Comparable<ConstraintRul
     this.fullBindings = fullBindings;
   }
 
-  ConstraintRuleWithContext(Set<StatementPattern> head, StatementPattern violationBody, List<ContextualBinding> bodyBindings, List<ContextualBinding> fullBindings) {
+  ConstraintRuleWithContext(Set<StatementPattern> head, SimplePattern violationBody, List<ContextualBinding> bodyBindings, List<ContextualBinding> fullBindings) {
     this(head, violationBody, Collections.emptyList(), bodyBindings, fullBindings);
   }
 
@@ -36,15 +33,11 @@ public final class ConstraintRuleWithContext implements Comparable<ConstraintRul
     return head;
   }
 
-  public StatementPattern getViolationBody() {
+  public SimplePattern getViolationBody() {
     return violationBody;
   }
 
-  public List<StatementPattern> getContextBody() {
-    return contextPatterns.stream().map(ContextPattern::toPattern).collect(Collectors.toList());
-  }
-
-  public List<ContextPattern> getContextPatterns() {
+  public List<SimplePattern> getContextBody() {
     return contextPatterns;
   }
 
@@ -84,43 +77,32 @@ public final class ConstraintRuleWithContext implements Comparable<ConstraintRul
     return head.hashCode() ^ violationBody.hashCode();
   }
 
-  public static class ContextPattern {
+  public static class SimplePattern {
     public final String subjectVariable;
     public final IRI predicate;
     public final Value object;
     public final String objectVariable;
 
-    public ContextPattern(String subjectVariable, IRI predicate, Value object) {
+    public SimplePattern(String subjectVariable, IRI predicate, Value object) {
       this.subjectVariable = subjectVariable;
       this.predicate = predicate;
       this.object = object;
       this.objectVariable = null;
     }
 
-    public ContextPattern(String subjectVariable, IRI predicate, String objectVariable) {
+    public SimplePattern(String subjectVariable, IRI predicate, String objectVariable) {
       this.subjectVariable = subjectVariable;
       this.predicate = predicate;
       this.object = null;
       this.objectVariable = objectVariable;
     }
 
-
-    public StatementPattern toPattern() {
-      return new StatementPattern(
-              new Var(subjectVariable),
-              TupleExprs.createConstVar(predicate),
-              objectVariable == null
-                      ? (object == null ? new Var(Integer.toString(Math.abs(hashCode()))) : TupleExprs.createConstVar(object))
-                      : new Var(objectVariable)
-      );
-    }
-
     @Override
     public boolean equals(Object other) {
-      if (!(other instanceof ContextPattern)) {
+      if (!(other instanceof SimplePattern)) {
         return false;
       }
-      ContextPattern o = (ContextPattern) other;
+      SimplePattern o = (SimplePattern) other;
       return Objects.equals(subjectVariable, o.subjectVariable) && Objects.equals(predicate, o.predicate) && Objects.equals(object, o.object) && Objects.equals(objectVariable, o.objectVariable);
     }
 
@@ -214,7 +196,7 @@ public final class ConstraintRuleWithContext implements Comparable<ConstraintRul
       }
     }
 
-    public boolean matches(ContextPattern pattern) {
+    public boolean matches(SimplePattern pattern) {
       Value subject = getValue(pattern.subjectVariable);
       Value object = (pattern.objectVariable != null) ? getValue(pattern.objectVariable) : pattern.object;
       if (subject == null) {
@@ -242,7 +224,7 @@ public final class ConstraintRuleWithContext implements Comparable<ConstraintRul
       }
     }
 
-    public Stream<ContextualBinding> evaluate(ContextPattern pattern) {
+    public Stream<ContextualBinding> evaluate(SimplePattern pattern) {
       Value subject = getValue(pattern.subjectVariable);
       Value object = (pattern.objectVariable != null) ? getValue(pattern.objectVariable) : pattern.object;
       return correction.getPsoContext()

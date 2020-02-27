@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.cli.*;
 import org.eclipse.rdf4j.model.*;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.eclipse.rdf4j.query.QueryEvaluationException;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
@@ -233,7 +234,9 @@ public class MainAddContext {
         } else if (SCHEMA_DESCRIPTION.equals(predicate)) {
           desc.setDescription(object);
         } else if (Vocabulary.WDT_NAMESPACE.equals(predicate.getNamespace())) {
-          desc.addFact(predicate, object);
+          if (object.stringValue() != null && !(object instanceof Literal && ((Literal) object).getLanguage().isEmpty() && RDF.LANGSTRING.equals(((Literal) object).getDatatype()))) {
+            desc.addFact(predicate, object);
+          }
         }
       }
       return OBJECT_MAPPER.writeValueAsString(desc);

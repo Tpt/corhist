@@ -6,10 +6,8 @@ import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 import org.eclipse.rdf4j.query.algebra.StatementPattern;
-import org.eclipse.rdf4j.query.algebra.Var;
 import org.wikidata.history.corhist.dataset.ConstraintViolationCorrectionWithContext;
 import org.wikidata.history.corhist.mining.ConstraintRuleWithContext.ContextualBinding;
-import org.wikidata.history.sparql.Vocabulary;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,55 +55,18 @@ class EvaluatorWithContext {
   }
 
   private Optional<Set<Statement>> buildPossibleCorrection(List<ConstraintRuleWithContext> rules, ConstraintViolationCorrectionWithContext correction) {
-    Statement violationStatement = VALUE_FACTORY.createStatement(
-            correction.getCorrection().getTargetTriple().getSubject(),
-            correction.getCorrection().getConstraint().getId(),
-            correction.getCorrection().getTargetTriple().getObject(),
-            Vocabulary.toGlobalState(Vocabulary.previousRevision(correction.getCorrection().getCorrectionRevision()))
-    );
     ContextualBinding base = new ContextualBinding(correction);
     return rules.stream().flatMap(rule ->
-            evaluate(rule.getViolationBody(), violationStatement, base)
+            base.evaluate(rule.getViolationBody())
                     .flatMap(binding -> {
                       Stream<ContextualBinding> bindings = Stream.of(binding);
-                      for (ConstraintRuleWithContext.ContextPattern p : rule.getContextPatterns()) {
+                      for (ConstraintRuleWithContext.SimplePattern p : rule.getContextBody()) {
                         bindings = bindings.flatMap(b -> b.evaluate(p));
                       }
                       return bindings;
                     })
                     .map(bindings -> instantiate(rule.getHead(), bindings))
     ).findAny();
-  }
-
-  private Stream<ContextualBinding> evaluate(StatementPattern pattern, Statement statement, ContextualBinding base) {
-    Var object = pattern.getObjectVar();
-    if (object.isConstant()) {
-      if (!object.getValue().equals(statement.getObject())) {
-        return Stream.empty();
-      }
-    } else {
-      base = base.withValue(object.getName(), statement.getObject());
-    }
-
-    Var predicate = pattern.getPredicateVar();
-    if (predicate.isConstant()) {
-      if (!predicate.getValue().equals(statement.getPredicate())) {
-        return Stream.empty();
-      }
-    } else {
-      base = base.withValue(predicate.getName(), statement.getPredicate());
-    }
-
-    Var subject = pattern.getSubjectVar();
-    if (subject.isConstant()) {
-      if (!subject.getValue().equals(statement.getSubject())) {
-        return Stream.empty();
-      }
-    } else {
-      base = base.withValue(subject.getName(), statement.getSubject());
-    }
-
-    return Stream.of(base);
   }
 
   private Set<Statement> instantiate(Collection<StatementPattern> patterns, ContextualBinding binding) {

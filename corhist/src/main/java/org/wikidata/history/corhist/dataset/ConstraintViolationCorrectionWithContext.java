@@ -21,18 +21,19 @@ public final class ConstraintViolationCorrectionWithContext {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final ValueFactory VALUE_FACTORY = SimpleValueFactory.getInstance();
   private static final IRI HISTORY_PAGE_STATUS_CODE = VALUE_FACTORY.createIRI(Vocabulary.WBHISTORY_NAMESPACE, "pageStatusCode");
+  private static final IRI HISTORY_PAGE_CONTAINS_LABEL = VALUE_FACTORY.createIRI(Vocabulary.WBHISTORY_NAMESPACE, "pageContainsLabel");
 
   private ConstraintViolationCorrection correction;
   private EntityDescription subjectContext;
   private ContextElement objectContext;
-  private ContextElement otherObjectContext;
+  private ContextElement otherEntityContext;
   private Map<IRI, List<Map.Entry<Value, Value>>> psoContext;
 
   ConstraintViolationCorrectionWithContext(ConstraintViolationCorrection correction, EntityDescription subjectContext, ContextElement objectContext, ContextElement otherObjectContext) {
     this.correction = correction;
     this.subjectContext = subjectContext;
     this.objectContext = objectContext;
-    this.otherObjectContext = otherObjectContext;
+    this.otherEntityContext = otherObjectContext;
   }
 
   public static ConstraintViolationCorrectionWithContext read(String line, ValueFactory valueFactory, Map<IRI, Constraint> constraints) {
@@ -104,27 +105,43 @@ public final class ConstraintViolationCorrectionWithContext {
 
   public Map<IRI, List<Map.Entry<Value, Value>>> getPsoContext() {
     if (psoContext == null) {
+      List<EntityDescription> allEntities = new ArrayList<>();
+      if (subjectContext != null) {
+        allEntities.add(subjectContext);
+      }
+      if (objectContext instanceof EntityDescription) {
+        allEntities.add((EntityDescription) objectContext);
+      }
+      if (otherEntityContext instanceof EntityDescription) {
+        allEntities.add((EntityDescription) otherEntityContext);
+      }
+
       psoContext = new HashMap<>();
-      addContextObjectToContext(subjectContext, correction.getTargetTriple());
-      addContextObjectToContext(objectContext, correction.getTargetTriple());
+      addToPsoContext(
+              correction.getTargetTriple().getSubject(),
+              correction.getConstraint().getId(),
+              correction.getTargetTriple().getObject()
+      );
+      addEntityToContext(subjectContext);
+      addContextObjectToContext(objectContext, correction.getTargetTriple().getObject(), allEntities);
       if (correction.getOtherTargetTriple() != null) {
         Statement otherTriple = correction.getOtherTargetTriple();
         addToPsoContext(otherTriple.getSubject(), otherTriple.getPredicate(), otherTriple.getObject());
-        addContextObjectToContext(otherObjectContext, otherTriple);
+        addContextObjectToContext(otherEntityContext, otherTriple.getObject(), allEntities);
       }
     }
     return psoContext;
   }
 
-  private void addContextObjectToContext(ContextElement entity, Statement context) {
+  private void addContextObjectToContext(ContextElement entity, Value describedValue, List<EntityDescription> otherEntities) {
     if (entity instanceof EntityDescription) {
-      addEntityToContext((EntityDescription) entity, context);
+      addEntityToContext((EntityDescription) entity);
     } else if (entity instanceof WebPage) {
-      addWebPageToContext((WebPage) entity, context);
+      addWebPageToContext((WebPage) entity, describedValue, otherEntities);
     }
   }
 
-  private void addEntityToContext(EntityDescription entity, Statement context) {
+  private void addEntityToContext(EntityDescription entity) {
     if (entity != null) {
       for (Map.Entry<IRI, List<Value>> facts : entity.getFacts().entrySet()) {
         for (Value value : facts.getValue()) {
@@ -134,8 +151,13 @@ public final class ConstraintViolationCorrectionWithContext {
     }
   }
 
-  private void addWebPageToContext(WebPage entity, Statement context) {
-    addToPsoContext(context.getObject(), HISTORY_PAGE_STATUS_CODE, VALUE_FACTORY.createLiteral(entity.getStatusCode()));
+  private void addWebPageToContext(WebPage entity, Value describedValue, List<EntityDescription> otherEntities) {
+    addToPsoContext(describedValue, HISTORY_PAGE_STATUS_CODE, VALUE_FACTORY.createLiteral(entity.getStatusCode()));
+    for (EntityDescription entityDescription : otherEntities) {
+      if (entityDescription.getLabels().values().stream().anyMatch(label -> entity.getContent().contains(label))) {
+        addToPsoContext(describedValue, HISTORY_PAGE_CONTAINS_LABEL, entityDescription.getId());
+      }
+    }
   }
 
   private void addToPsoContext(Value subject, IRI predicate, Value object) {
