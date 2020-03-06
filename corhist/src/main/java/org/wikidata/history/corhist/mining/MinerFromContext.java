@@ -23,23 +23,24 @@ class MinerFromContext {
 
   private static final Var S = new Var("s");
   private static final Var O = new Var("o");
+  private static final Var OTHER_S = new Var("otherS");
+  private static final Var OTHER_O = new Var("otherO");
 
   List<ConstraintRuleWithContext> mine(List<ConstraintViolationCorrectionWithContext> corrections) {
     return possibleBasicRules(corrections)
-            .flatMap(this::addOtherTargetTriple)
             .flatMap(rule -> refineWithGraph(rule, 1))
             .distinct()
             .collect(Collectors.toList());
   }
 
   private Stream<ConstraintRuleWithContext> possibleBasicRules(List<ConstraintViolationCorrectionWithContext> corrections) {
-    Map<SimplePattern, List<ContextualBinding>> violationPatterns = new HashMap<>();
-    Map<Map.Entry<SimplePattern, Set<StatementPattern>>, List<ContextualBinding>> violationAndCorrectionPatterns = new HashMap<>();
+    Map<Map.Entry<SimplePattern, Optional<SimplePattern>>, List<ContextualBinding>> violationPatterns = new HashMap<>();
+    Map<Map.Entry<Map.Entry<SimplePattern, Optional<SimplePattern>>, Set<StatementPattern>>, List<ContextualBinding>> violationAndCorrectionPatterns = new HashMap<>();
 
     corrections.forEach(correction -> {
       //We first build a pattern for the violation and we expand it for the correction
       createViolationPattern(correction).forEach(violationPatternAndBinding -> {
-        SimplePattern violationPattern = violationPatternAndBinding.getKey();
+        Map.Entry<SimplePattern, Optional<SimplePattern>> violationPattern = violationPatternAndBinding.getKey();
         ContextualBinding binding = violationPatternAndBinding.getValue();
         Set<StatementPattern> correctionPatterns = buildCorrectionPattern(
                 binding,
@@ -58,80 +59,144 @@ class MinerFromContext {
 
     //We transform the patterns we have found in rules
     return violationAndCorrectionPatterns.entrySet().stream().map(violationAndCorrectionPatternAndBindings -> {
-      SimplePattern violationPattern = violationAndCorrectionPatternAndBindings.getKey().getKey();
+      Map.Entry<SimplePattern, Optional<SimplePattern>> violationPattern = violationAndCorrectionPatternAndBindings.getKey().getKey();
       Set<StatementPattern> correctionPatterns = violationAndCorrectionPatternAndBindings.getKey().getValue();
       List<ContextualBinding> bodyBindings = violationPatterns.get(violationPattern);
       List<ContextualBinding> fullBindings = violationAndCorrectionPatternAndBindings.getValue();
-      return new ConstraintRuleWithContext(correctionPatterns, violationPattern, bodyBindings, fullBindings);
+      return new ConstraintRuleWithContext(correctionPatterns, violationPattern.getKey(), violationPattern.getValue().stream().collect(Collectors.toList()), bodyBindings, fullBindings);
     }).filter(this::passThresholds);
   }
 
 
-  private Stream<Map.Entry<SimplePattern, ContextualBinding>> createViolationPattern(ConstraintViolationCorrectionWithContext correction) {
+  private Stream<Map.Entry<Map.Entry<SimplePattern, Optional<SimplePattern>>, ContextualBinding>> createViolationPattern(ConstraintViolationCorrectionWithContext correction) {
     Value subject = correction.getCorrection().getTargetTriple().getSubject();
     IRI predicate = correction.getCorrection().getConstraint().getId();
     Value object = correction.getCorrection().getTargetTriple().getObject();
-    return Stream.of(
+    Statement otherTriple = correction.getCorrection().getOtherTargetTriple();
+
+    List<Map.Entry<Map.Entry<SimplePattern, Optional<SimplePattern>>, ContextualBinding>> possibles = new ArrayList<>();
+    possibles.add(Map.entry(
             Map.entry(
                     new SimplePattern("s", predicate, "o"),
-                    new ContextualBinding(correction, subject, object, null, null)
+                    Optional.empty()
             ),
+            new ContextualBinding(correction, subject, object, null, null)
+    ));
+    possibles.add(Map.entry(
             Map.entry(
                     new SimplePattern("s", predicate, correction.getCorrection().getTargetTriple().getObject()),
-                    new ContextualBinding(correction, subject, null, null, null)
-            )
-    );
+                    Optional.empty()
+            ),
+            new ContextualBinding(correction, subject, null, null, null)
+    ));
+
+    if (otherTriple != null) {
+      if (otherTriple.getSubject().equals(subject)) {
+        if (otherTriple.getObject().equals(object)) {
+          possibles.add(Map.entry(
+                  Map.entry(
+                          new SimplePattern("s", predicate, "o"),
+                          Optional.of(new SimplePattern("s", otherTriple.getPredicate(), "o"))
+                  ),
+                  new ContextualBinding(correction, subject, object, null, null)
+          ));
+        }
+        possibles.add(Map.entry(
+                Map.entry(
+                        new SimplePattern("s", predicate, "o"),
+                        Optional.of(new SimplePattern("s", otherTriple.getPredicate(), "otherO"))
+                ),
+                new ContextualBinding(correction, subject, object, null, otherTriple.getObject())
+        ));
+        possibles.add(Map.entry(
+                Map.entry(
+                        new SimplePattern("s", predicate, "o"),
+                        Optional.of(new SimplePattern("s", otherTriple.getPredicate(), otherTriple.getObject()))
+                ),
+                new ContextualBinding(correction, subject, object, null, null)
+        ));
+        possibles.add(Map.entry(
+                Map.entry(
+                        new SimplePattern("s", predicate, object),
+                        Optional.of(new SimplePattern("s", otherTriple.getPredicate(), otherTriple.getObject()))
+                ),
+                new ContextualBinding(correction, subject, null, null, null)
+        ));
+        possibles.add(Map.entry(
+                Map.entry(
+                        new SimplePattern("s", predicate, object),
+                        Optional.of(new SimplePattern("s", otherTriple.getPredicate(), "otherO"))
+                ),
+                new ContextualBinding(correction, subject, null, null, otherTriple.getObject())
+        ));
+      } else if (otherTriple.getSubject().equals(object)) {
+        if (otherTriple.getObject().equals(subject)) {
+          possibles.add(Map.entry(
+                  Map.entry(
+                          new SimplePattern("s", predicate, "o"),
+                          Optional.of(new SimplePattern("o", otherTriple.getPredicate(), "s"))
+                  ),
+                  new ContextualBinding(correction, subject, object, null, null)
+          ));
+        }
+        possibles.add(Map.entry(
+                Map.entry(
+                        new SimplePattern("s", predicate, "o"),
+                        Optional.of(new SimplePattern("o", otherTriple.getPredicate(), "otherO"))
+                ),
+                new ContextualBinding(correction, subject, object, null, otherTriple.getObject())
+        ));
+        possibles.add(Map.entry(
+                Map.entry(
+                        new SimplePattern("s", predicate, "o"),
+                        Optional.of(new SimplePattern("o", otherTriple.getPredicate(), otherTriple.getObject()))
+                ),
+                new ContextualBinding(correction, subject, object, null, null)
+        ));
+      }
+      if (otherTriple.getObject().equals(object)) {
+        possibles.add(Map.entry(
+                Map.entry(
+                        new SimplePattern("s", predicate, "o"),
+                        Optional.of(new SimplePattern("otherS", otherTriple.getPredicate(), "o"))
+                ),
+                new ContextualBinding(correction, subject, object, otherTriple.getSubject(), null)
+        ));
+      } else if (otherTriple.getObject().equals(subject)) {
+        possibles.add(Map.entry(
+                Map.entry(
+                        new SimplePattern("s", predicate, "o"),
+                        Optional.of(new SimplePattern("otherS", otherTriple.getPredicate(), "s"))
+                ),
+                new ContextualBinding(correction, subject, object, otherTriple.getSubject(), null)
+        ));
+      }
+    }
+    return possibles.stream();
   }
 
   private Set<StatementPattern> buildCorrectionPattern(ContextualBinding binding, Set<Statement> statements) {
     return statements.stream().map(statement -> {
-      Var subject = (statement.getSubject().equals(binding.getValue("s"))) ? S : TupleExprs.createConstVar(statement.getSubject());
+      Var subject = buildCorrectionVariable(statement.getSubject(), binding);
       Var predicate = TupleExprs.createConstVar(statement.getPredicate());
-      Var object = (statement.getObject().equals(binding.getValue("o"))) ? O : TupleExprs.createConstVar(statement.getObject());
+      Var object = buildCorrectionVariable(statement.getObject(), binding);
       Var context = TupleExprs.createConstVar(statement.getContext());
       return new StatementPattern(subject, predicate, object, context);
     }).collect(Collectors.toSet());
   }
 
-  private Stream<ConstraintRuleWithContext> addOtherTargetTriple(ConstraintRuleWithContext rule) {
-    return Stream.concat(
-            rule.getFullBindings()
-                    .flatMap(binding -> {
-                      Statement mainTriple = binding.correction.getCorrection().getTargetTriple();
-                      Statement otherTriple = binding.correction.getCorrection().getOtherTargetTriple();
-                      if (otherTriple == null) {
-                        return Stream.empty();
-                      }
-                      if (mainTriple.getSubject().equals(otherTriple.getSubject())) {
-                        if (mainTriple.getObject().equals(otherTriple.getObject()) && rule.getViolationBody().objectVariable != null) {
-                          return Stream.of(
-                                  new SimplePattern("s", otherTriple.getPredicate(), "o")
-                          );
-                        } else {
-                          return Stream.of(
-                                  new SimplePattern("s", otherTriple.getPredicate(), "otherO"),
-                                  new SimplePattern("s", otherTriple.getPredicate(), otherTriple.getObject())
-                          );
-                        }
-                      } else if (mainTriple.getObject().equals(otherTriple.getObject()) && rule.getViolationBody().objectVariable != null) {
-                        return Stream.of(new SimplePattern("otherS", otherTriple.getPredicate(), "o"));
-                      } else {
-                        throw new IllegalArgumentException("Unexpected main triple and other triple: " + mainTriple + " " + otherTriple);
-                      }
-                    })
-                    .distinct()
-                    .map(pattern -> new ConstraintRuleWithContext(
-                            rule.getHead(), rule.getViolationBody(), concat(rule.getContextBody(), pattern),
-                            rule.getBodyBindings()
-                                    .flatMap(binding -> binding.evaluate(pattern))
-                                    .collect(Collectors.toList()),
-                            rule.getFullBindings()
-                                    .flatMap(binding -> binding.evaluate(pattern))
-                                    .collect(Collectors.toList())
-                    ))
-                    .filter(this::passThresholds),
-            Stream.of(rule)
-    );
+  private Var buildCorrectionVariable(Value value, ContextualBinding binding) {
+    if (value.equals(binding.getValue("s"))) {
+      return S;
+    } else if (value.equals(binding.getValue("o"))) {
+      return O;
+    } else if (value.equals(binding.getValue("otherS"))) {
+      return OTHER_S;
+    } else if (value.equals(binding.getValue("otherO"))) {
+      return OTHER_O;
+    } else {
+      return TupleExprs.createConstVar(value);
+    }
   }
 
   private boolean passThresholds(ConstraintRuleWithContext rule) {
